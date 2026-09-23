@@ -15,6 +15,21 @@ body {
   overflow: hidden;
 }
 
+/* পপআপ ও ওভারলে ডিফল্টভাবে লুকিয়ে রাখার নিয়ম */
+.hidden {
+  display: none !important;
+}
+
+.mini-overlay, .profile-overlay {
+  display: none; /* ডিফল্টভাবে পপআপ বন্ধ থাকবে */
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  justify-content: center;
+  align-items: center;
+  z-index: 500;
+}
+
 .splash-screen {
   position: fixed;
   inset: 0;
@@ -31,10 +46,6 @@ body {
   font-weight: 900;
   color: var(--gold);
   text-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
-}
-
-.hidden {
-  display: none !important;
 }
 
 .mode-screen {
@@ -65,16 +76,6 @@ body {
   background: #2d3748;
   position: relative;
   border-radius: 12px;
-}
-
-.mini-overlay, .profile-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 500;
 }
 
 .mini-card, .profile-panel {
