@@ -368,6 +368,7 @@ function handleAccountClick() {
     document.getElementById('profBalance').textContent = '৳ ' + state.balance.toFixed(2);
     openModal('profileModal');
   } else {
+    // Directly redirecting to /login route
     window.location.href = '/login';
   }
 }
