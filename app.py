@@ -25,19 +25,6 @@ def init_db():
 # Initialize DB on start
 init_db()
 
-@app.route('/')
-def home():
-    # ইউজার লগইন না থাকলে সরাসরি লগইন পেজে পাঠাবে
-    if not session.get('user_phone'):
-        return redirect(url_for('login_page'))
-    return render_template('index.html')
-
-
-@app.route('/login')
-def login_page():
-    if session.get('user_phone'):
-        return redirect(url_for('home'))
-    return render_template('login.html')
 # --------------------------------------------------------------------------
 # Website Routes
 # --------------------------------------------------------------------------
@@ -53,12 +40,17 @@ def login_page():
         return redirect(url_for('home'))
     return render_template('login.html')
 
-# --- ঠিক এখানে বসাবে ---
 @app.route('/speed-tap')
 def speed_tap():
     if not session.get('user_phone'):
         return redirect(url_for('login_page'))
     return render_template('Speedtap.html')
+
+@app.route('/ludo')
+def ludo_game():
+    if not session.get('user_phone'):
+        return redirect(url_for('login_page'))
+    return render_template('ludo.html')
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.json or {}
