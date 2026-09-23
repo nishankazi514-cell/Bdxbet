@@ -27,7 +27,11 @@ init_db()
 
 @app.route('/')
 def home():
+    # ইউজার লগইন না থাকলে সরাসরি লগইন পেজে পাঠাবে
+    if not session.get('user_phone'):
+        return redirect(url_for('login_page'))
     return render_template('index.html')
+
 
 @app.route('/login')
 def login_page():
