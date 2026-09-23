@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Ludo King Authentic Online Edition</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='ludo.css') }}">
+</head>
+<body>
+
+  <svg width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id="pin-white" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#d0d0d0"/>
+      </linearGradient>
+      <linearGradient id="pin-shine" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#ffffff"/><stop offset="55%" stop-color="transparent"/>
+      </linearGradient>
+      <linearGradient id="pin-blue" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#64b5f6"/><stop offset="100%" stop-color="#0d47a1"/>
+      </linearGradient>
+      <linearGradient id="pin-yellow" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#fff176"/><stop offset="100%" stop-color="#f57f17"/>
+      </linearGradient>
+      <linearGradient id="pin-red" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#ef5350"/><stop offset="100%" stop-color="#b71c1c"/>
+      </linearGradient>
+      <linearGradient id="pin-green" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#81c784"/><stop offset="100%" stop-color="#1b5e20"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <div class="splash-screen" id="splash">
+    <div class="splash-glow"></div>
+    <div class="splash-logo">
+      <div class="splash-dice">
+        <div class="splash-dot"></div><div class="splash-dot empty"></div><div class="splash-dot"></div>
+        <div class="splash-dot empty"></div><div class="splash-dot"></div><div class="splash-dot empty"></div>
+        <div class="splash-dot"></div><div class="splash-dot empty"></div><div class="splash-dot"></div>
+      </div>
+      <div class="splash-title">LUDO BDxbet</div>
+      <div class="splash-subtitle">ONLINE EDITION</div>
+      <div class="created-by">Created by MS</div>
+    </div>
+    <div class="splash-loader"><span></span><span></span><span></span></div>
+  </div>
+
+  <!-- ==================== MODE SCREEN ==================== -->
+  <div class="mode-screen hidden" id="mode-screen">
+
+    <!-- TOP AREA: profile + nav bar -->
+    <div class="mode-top-area">
+
+      <!-- Profile pill (green glow) -->
+      <div class="mode-profile-pill" id="mode-profile-pill" onclick="openProfile()">
+        <div class="mpp-avatar" id="mpp-avatar">👨‍💼</div>
+        <div class="mpp-info">
+          <div class="mpp-name" id="mpp-name">Guest</div>
+          <div class="mpp-coins" id="mpp-coins">🪙 0</div>
+        </div>
+      </div>
+
+      <!-- Nav bar (gold border) with all options -->
+      <div class="mode-nav-bar">
+        <button class="mnb-item" onclick="openClassicMode()">
+          <span class="mnb-icon">🎮</span>
+          <span class="mnb-label">ক্লাসিক</span>
+        </button>
+        <button class="mnb-item" onclick="openFriendsScreen()">
+          <span class="mnb-icon">👥</span>
+          <span class="mnb-label">বন্ধু</span>
+          <span class="mnb-badge" id="mfp-badge" style="display:none;">0</span>
+        </button>
+        <button class="mnb-item" onclick="openInboxScreen()">
+          <span class="mnb-icon">✉️</span>
+          <span class="mnb-label">ইনবক্স</span>
+          <span class="mnb-badge" id="mip-badge" style="display:none;">0</span>
+        </button>
+        <button class="mnb-item mnb-item-primary" onclick="openGlobalRoom()">
+          <span class="mnb-icon">🌐</span>
+          <span class="mnb-label">লাইভ রুম</span>
+        </button>
+      </div>
+
+    </div>
+
+    <div class="mode-header">
+      <div class="mode-title">SELECT MODE</div>
+      <div class="mode-subtitle">খেলার ধরণ বেছে নিন</div>
+      <div class="mode-divider"></div>
+    </div>
+    <div class="mode-options">
+      <div class="mode-card" onclick="selectMatchType('1v1')">
+        <div class="mode-badge">2P</div>
+        <div class="mode-icon mode-icon-2p">
+          <div class="mini-pawn pawn-blue-mini"></div>
+          <div class="mini-pawn pawn-green-mini"></div>
+        </div>
+        <div class="mode-label">1 vs 1</div>
+        <div class="mode-desc">দুই জন খেলোয়াড়</div>
+      </div>
+      <div class="mode-card" onclick="selectMatchType('4p')">
+        <div class="mode-badge">4P</div>
+        <div class="mode-icon mode-icon-4p">
+          <div class="mini-pawn pawn-blue-mini"></div>
+          <div class="mini-pawn pawn-red-mini"></div>
+          <div class="mini-pawn pawn-yellow-mini"></div>
+          <div class="mini-pawn pawn-green-mini"></div>
+        </div>
+        <div class="mode-label">4 PLAYERS</div>
+        <div class="mode-desc">চার জন খেলোয়াড়</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="top-bar">
+    <button class="tb-btn tb-home" onclick="goHome()">
+      <span class="tb-icon">🏠</span>
+      <span class="tb-label">হোম</span>
+    </button>
+    <div class="tb-title" id="tb-title">LUDO KING</div>
+    <button class="tb-btn tb-settings" onclick="openSettings()">
+      <span class="tb-icon">⚙️</span>
+      <span class="tb-label">সেটিংস</span>
+    </button>
+  </div>
+
+  <div class="game-wrapper" id="game-wrapper">
+    <div class="bet-badge" id="bet-badge">
+      <span>💰</span>
+      <span id="bet-badge-text">এন্ট্রি: ১০ · প্রাইজ: ১৮</span>
+    </div>
+    <div class="board-container" id="board">
+      <div class="player-card pc-blue" id="card-blue">
+        <div class="player-profile">
+          <div class="avatar" id="avatar-blue">👨‍💼</div>
+          <div class="p-info">
+            <span class="p-name" id="name-blue">Player 1</span>
+            <span class="p-coins" id="coins-blue">🪙 2,500</span>
+          </div>
+        </div>
+        <div class="card-dice" id="dice-blue" onclick="rollDice()">🎲</div>
+      </div>
+      <div class="player-card pc-red" id="card-red">
+        <div class="player-profile">
+          <div class="avatar">🏎️</div>
+          <div class="p-info">
+            <span class="p-name">Player 2</span>
+            <span class="p-coins">🪙 4,100</span>
+          </div>
+        </div>
+        <div class="card-dice" id="dice-red" onclick="rollDice()">🎲</div>
+      </div>
+      <div class="player-card pc-yellow" id="card-yellow">
+        <div class="player-profile">
+          <div class="avatar">👑</div>
+          <div class="p-info">
+            <span class="p-name">Player 3</span>
+            <span class="p-coins">🪙 4,670</span>
+          </div>
+        </div>
+        <div class="card-dice" id="dice-yellow" onclick="rollDice()">🎲</div>
+      </div>
+      <div class="player-card pc-green" id="card-green">
+        <div class="player-profile">
+          <div class="avatar">🐯</div>
+          <div class="p-info">
+            <span class="p-name">Player 4</span>
+            <span class="p-coins">🪙 1,960</span>
+          </div>
+        </div>
+        <div class="card-dice" id="dice-green" onclick="rollDice()">🎲</div>
+      </div>
+      <div class="center-area">
+        <div class="triangle tri-top"></div>
+        <div class="triangle tri-right"></div>
+        <div class="triangle tri-bottom"></div>
+        <div class="triangle tri-left"></div>
+      </div>
+    </div>
+    <div class="status-toast" id="status-text">Blue-এর চাল! আপনার ডায়াইসে চাপ দিন।</div>
+  </div>
+
+  <div class="global-room-screen hidden" id="global-room-screen">
+    <div class="gr-header">
+      <button class="tb-btn tb-home" onclick="closeGlobalRoom()">
+        <span class="tb-icon">←</span>
+        <span class="tb-label">ফিরুন</span>
+      </button>
+      <div class="gr-title">🌐 গ্লোবাল রুম</div>
+      <button class="tb-btn tb-settings" onclick="openCreateRoom()">
+        <span class="tb-icon">➕</span>
+        <span class="tb-label">তৈরি</span>
+      </button>
+    </div>
+    <div class="gr-list" id="gr-list"></div>
+  </div>
+
+  <!-- ==================== FRIENDS SCREEN ==================== -->
+  <div class="friends-screen hidden" id="friends-screen">
+    <div class="fr-header">
+      <button class="tb-btn tb-home" onclick="closeFriendsScreen()">
+        <span class="tb-icon">←</span>
+        <span class="tb-label">ফিরুন</span>
+      </button>
+      <div class="fr-title">👥 বন্ধু</div>
+      <button class="tb-btn tb-settings" onclick="refreshFriendsScreen()">
+        <span class="tb-icon">🔄</span>
+        <span class="tb-label">রিফ্রেশ</span>
+      </button>
+    </div>
+
+    <div class="fr-tabs">
+      <button class="fr-tab active" id="fr-tab-list" data-tab="list" onclick="switchFriendsTab('list')">
+        👥 বন্ধু তালিকা
+      </button>
+      <button class="fr-tab" id="fr-tab-requests" data-tab="requests" onclick="switchFriendsTab('requests')">
+        📬 রিকোয়েস্ট
+        <span class="fr-badge" id="fr-req-badge" style="display:none;">0</span>
+      </button>
+    </div>
+
+    <div class="fr-body">
+      <div class="fr-search-box">
+        <div class="fr-search-label">🔍 ইউজার আইডি দিয়ে সার্চ করুন</div>
+        <div class="fr-search-row">
+          <input class="fr-search-input" id="fr-search-input"
+                 placeholder="যেমন: LK-RAHIM001"
+                 maxlength="16" autocomplete="off">
+          <button class="fr-search-btn" onclick="doFriendSearch()">🔍</button>
+        </div>
+      </div>
+
+      <div id="fr-search-result-slot"></div>
+      <div id="fr-content-slot" style="display:flex;flex-direction:column;gap:12px;"></div>
+    </div>
+  </div>
+
+  <!-- ==================== INBOX SCREEN ==================== -->
+  <div class="inbox-screen hidden" id="inbox-screen">
+    <div class="inbox-header">
+      <button class="tb-btn tb-home" onclick="closeInboxScreen()">
+        <span class="tb-icon">←</span>
+        <span class="tb-label">ফিরুন</span>
+      </button>
+      <div class="inbox-title">💬 ইনবক্স</div>
+      <button class="tb-btn tb-settings" onclick="refreshInboxScreen()">
+        <span class="tb-icon">🔄</span>
+        <span class="tb-label">রিফ্রেশ</span>
+      </button>
+    </div>
+    <div class="inbox-list" id="inbox-list"></div>
+  </div>
+
+  <!-- ==================== CHAT SCREEN ==================== -->
+  <div class="chat-screen hidden" id="chat-screen">
+    <div class="chat-header">
+      <button class="tb-btn tb-home" onclick="closeChatScreen()">
+        <span class="tb-icon">←</span>
+        <span class="tb-label">পিছনে</span>
+      </button>
+      <div class="chat-header-info" onclick="onChatHeaderClick()">
+        <div class="chat-header-avatar" id="chat-header-avatar">👤</div>
+        <div class="chat-header-text">
+          <div class="chat-header-name" id="chat-header-name">User</div>
+          <div class="chat-header-status" id="chat-header-status">🟢 অনলাইন</div>
+        </div>
+      </div>
+    </div>
+    <div class="chat-body" id="chat-body"></div>
+    <div class="chat-input-bar">
+      <input type="text" class="chat-input" id="chat-input"
+             placeholder="মেসেজ লিখুন..." maxlength="500" autocomplete="off">
+      <button class="chat-send-btn" id="chat-send-btn" onclick="sendChatMessage()">➤</button>
+    </div>
+  </div>
+
+  <div class="mini-overlay" id="create-room-overlay">
+    <div class="mini-card">
+      <div class="mini-title">🏗️ নতুন রুম তৈরি করুন</div>
+
+      <div class="cr-label">প্লেয়ার সংখ্যা</div>
+      <div class="cr-mode-row">
+        <button class="cr-mode-btn selected" data-mode="1v1" onclick="selectCreateMode('1v1')">
+          <span class="crm-icon">👥</span>
+          <span class="crm-title">1 vs 1</span>
+          <span class="crm-sub">২ জন খেলোয়াড়</span>
+        </button>
+        <button class="cr-mode-btn" data-mode="4p" onclick="selectCreateMode('4p')">
+          <span class="crm-icon">👨‍👩‍👦‍👦</span>
+          <span class="crm-title">4 Player</span>
+          <span class="crm-sub">৪ জন খেলোয়াড়</span>
+        </button>
+      </div>
+
+      <div class="cr-label">কয়েন এন্ট্রি</div>
+      <div class="cr-coin-row">
+        <button class="cr-coin-btn" data-coin="50" onclick="selectCreateCoin(50)">50</button>
+        <button class="cr-coin-btn selected" data-coin="100" onclick="selectCreateCoin(100)">100</button>
+        <button class="cr-coin-btn" data-coin="200" onclick="selectCreateCoin(200)">200</button>
+        <button class="cr-coin-btn" data-coin="500" onclick="selectCreateCoin(500)">500</button>
+      </div>
+      <input type="number" class="bet-custom-input" id="cr-coin-input"
+             placeholder="কাস্টম পরিমাণ (মিনিট ১০)" min="10" step="1"
+             oninput="onCreateCoinInput(event)" style="margin-top:10px;">
+
+      <div class="cr-balance-strip">
+        <span>🪙 আপনার ব্যালেন্স:</span>
+        <b id="cr-balance-val">0</b>
+      </div>
+
+      <div class="mini-actions">
+        <button class="mini-btn ghost" onclick="closeCreateRoom()">বাতিল</button>
+        <button class="mini-btn" onclick="confirmCreateRoom()">✅ তৈরি করুন</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="mini-overlay" id="profile-action-overlay" onclick="paOverlayClick(event)">
+    <div class="mini-card" style="max-width:300px;">
+      <div class="pa-profile">
+        <div class="pa-avatar" id="pa-avatar">👤</div>
+        <div class="pa-name" id="pa-name">User</div>
+        <div class="pa-uid" id="pa-uid">UID: LK-XXXXXXXX</div>
+      </div>
+      <div class="pa-actions">
+        <button class="mini-btn" onclick="onMessageClick()">💬 Message</button>
+        <button class="mini-btn" onclick="onAddFriendClick()">➕ Add Friend</button>
+      </div>
+      <button class="mini-btn ghost wide" onclick="closeProfileAction()">বন্ধ করুন</button>
+    </div>
+  </div>
+
+  <div class="mini-overlay" id="matchtype-overlay">
+    <div class="mini-card">
+      <div class="mini-title">🎮 ম্যাচের ধরণ বেছে নিন</div>
+      <div class="mini-text">আপনি কিভাবে খেলতে চান?</div>
+      <div class="matchtype-options">
+        <button class="matchtype-btn free" onclick="chooseNormalMatch()">
+          <div class="mt-icon">🎲</div>
+          <div class="mt-title">সাধারণ ম্যাচ</div>
+          <div class="mt-desc">বিনামূল্যে খেলুন</div>
+        </button>
+        <button class="matchtype-btn bet" onclick="chooseBetMatch()">
+          <div class="mt-icon">💰</div>
+          <div class="mt-title">বাজি ম্যাচ</div>
+          <div class="mt-desc">এন্ট্রি ফি দিয়ে জিতুন</div>
+        </button>
+      </div>
+      <button class="mini-btn ghost wide" onclick="closeMatchType()">বাতিল</button>
+    </div>
+  </div>
+
+  <div class="mini-overlay" id="bet-overlay">
+    <div class="mini-card">
+      <div class="mini-title">💰 এন্ট্রি ফি নির্বাচন করুন</div>
+
+      <div class="bet-balance-strip">
+        <span class="bb-icon">🪙</span>
+        <span class="bb-label">আপনার ব্যালেন্স:</span>
+        <span class="bb-value" id="bet-balance-val">0</span>
+      </div>
+
+      <div class="bet-options" id="bet-options">
+        <button class="bet-btn" data-amount="10" onclick="selectBetAmount(10, event)">
+          <span class="bet-btn-icon">🪙</span>১০
+        </button>
+        <button class="bet-btn" data-amount="50" onclick="selectBetAmount(50, event)">
+          <span class="bet-btn-icon">🪙</span>৫০
+        </button>
+        <button class="bet-btn" data-amount="100" onclick="selectBetAmount(100, event)">
+          <span class="bet-btn-icon">🪙</span>১০০
+        </button>
+        <button class="bet-btn" data-amount="500" onclick="selectBetAmount(500, event)">
+          <span class="bet-btn-icon">🪙</span>৫০০
+        </button>
+      </div>
+
+      <div class="bet-custom-row">
+        <span class="bcr-label">কাস্টম:</span>
+        <input type="number" class="bet-custom-input" id="bet-custom-input"
+               placeholder="পরিমাণ লিখুন" min="5" step="1" oninput="onCustomBetInput(event)">
+      </div>
+
+      <div class="bet-calc" id="bet-calc">
+        <div class="bet-calc-line">
+          <span>এন্ট্রি ফি:</span>
+          <b id="bet-c-entry">—</b>
+        </div>
+        <div class="bet-calc-line">
+          <span>খেলোয়াড়:</span>
+          <b id="bet-c-players">—</b>
+        </div>
+        <div class="bet-calc-line">
+          <span>মোট পুল:</span>
+          <b id="bet-c-pool" class="bet-pool-amt">—</b>
+        </div>
+        <div class="bet-calc-line">
+          <span>সিস্টেম ফি (১০%):</span>
+          <b id="bet-c-fee">—</b>
+        </div>
+        <div class="bet-calc-line highlight">
+          <span>🏆 জয়ীর প্রাইজ:</span>
+          <b id="bet-c-prize">—</b>
+        </div>
+        <div class="bet-calc-note" id="bet-c-note">
+          আপনার এন্ট্রি ফি নির্বাচন করুন
+        </div>
+      </div>
+
+      <div class="bet-calc-warn hidden" id="bet-warn"></div>
+
+      <div class="mini-actions">
+        <button class="mini-btn ghost" onclick="closeBetAmount()">বাতিল</button>
+        <button class="mini-btn" onclick="startBetMatch()" id="bet-start-btn">রুম তৈরি করুন</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="mini-overlay" id="room-overlay">
+    <div class="mini-card">
+      <div class="mini-title">🔗 রুম তৈরি হয়েছে</div>
+
+      <div class="room-code-display">
+        <div class="room-code-label">রুম কোড</div>
+        <div class="room-code-value" id="room-code-value">LK-XXXXXX</div>
+        <div class="room-code-hint">বন্ধুকে এই কোডটি পাঠান</div>
+        <button class="room-code-copy-btn" onclick="copyRoomCode()" title="কপি করুন">📋</button>
+      </div>
+
+      <div class="room-share-row">
+        <button class="share-btn whatsapp" onclick="shareRoom('whatsapp')">
+          <span class="sb-ico">📱</span>
+          WhatsApp
+        </button>
+        <button class="share-btn messenger" onclick="shareRoom('messenger')">
+          <span class="sb-ico">💬</span>
+          Messenger
+        </button>
+        <button class="share-btn copy" onclick="shareRoom('copy')">
+          <span class="sb-ico">🔗</span>
+          লিংক কপি
+        </button>
+      </div>
+
+      <div class="room-players" id="room-players"></div>
+
+      <div class="room-status" id="room-status">
+        <span><span class="rs-dot"></span>বন্ধুর জন্য অপেক্ষা করা হচ্ছে...</span>
+      </div>
+
+      <div class="mini-actions">
+        <button class="mini-btn ghost" onclick="cancelRoom()">বাতিল</button>
+        <button class="mini-btn" id="room-ready-btn" onclick="playerReady()" disabled>
+          ✅ আমি প্রস্তুত
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="profile-overlay" id="settings-overlay" onclick="settingsOverlayClick(event)">
+    <div class="settings-panel">
+      <div class="settings-header">
+        <div class="settings-title">⚙️ সেটিংস</div>
+        <div class="pp-close" onclick="closeSettings()">✕</div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group-title">সাউন্ড ও কম্পন</div>
+        <div class="setting-row" onclick="toggleSoundFromSettings(event)">
+          <span class="sr-icon">🔊</span>
+          <span class="sr-label">সাউন্ড এফেক্ট<span class="sr-sub">ডাইস, গুটি ও কাটার শব্দ</span></span>
+          <div class="toggle-switch" id="ts-sound"><div class="toggle-knob"></div></div>
+        </div>
+        <div class="setting-row" onclick="toggleVibrationFromSettings(event)">
+          <span class="sr-icon">📳</span>
+          <span class="sr-label">ভাইব্রেশন<span class="sr-sub">ডিভাইস সাপোর্ট করলে কম্পন হবে</span></span>
+          <div class="toggle-switch" id="ts-vibration"><div class="toggle-knob"></div></div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group-title">গেমপ্লে</div>
+        <div class="setting-row" onclick="event.stopPropagation()">
+          <span class="sr-icon">⚡</span>
+          <span class="sr-label">অ্যানিমেশন স্পিড<span class="sr-sub">গুটির লাফানোর গতি</span></span>
+          <div class="speed-options" id="speed-options">
+            <button class="speed-btn" data-speed="slow" onclick="setSpeed('slow', event)">ধীর</button>
+            <button class="speed-btn" data-speed="normal" onclick="setSpeed('normal', event)">সাধারণ</button>
+            <button class="speed-btn" data-speed="fast" onclick="setSpeed('fast', event)">দ্রুত</button>
+          </div>
+        </div>
+        <div class="setting-row" onclick="togglePawnHighlightFromSettings(event)">
+          <span class="sr-icon">✨</span>
+          <span class="sr-label">গুটি হাইলাইট<span class="sr-sub">চাল দেওয়ার আগে গুটি জ্বলজ্বল করবে</span></span>
+          <div class="toggle-switch" id="ts-highlight"><div class="toggle-knob"></div></div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group-title">সাহায্য ও তথ্য</div>
+        <div class="setting-row" onclick="openHowToPlay()">
+          <span class="sr-icon">📖</span>
+          <span class="sr-label">কিভাবে খেলতে হয়<span class="sr-sub">সম্পূর্ণ নিয়ম ও নির্দেশনা</span></span>
+          <span class="sr-arrow">›</span>
+        </div>
+        <div class="setting-row" onclick="openProfileFromGame()">
+          <span class="sr-icon">👤</span>
+          <span class="sr-label">প্রোফাইল ও থিম<span class="sr-sub">নাম, অ্যাভাটার, থিম পরিবর্তন</span></span>
+          <span class="sr-arrow">›</span>
+        </div>
+      </div>
+
+      <button class="settings-exit-btn" onclick="confirmExitGame()">
+        🚪 গেম থেকে বেরিয়ে যান
+      </button>
+    </div>
+  </div>
+
+  <div class="profile-overlay" id="profile-overlay" onclick="profileOverlayClick(event)">
+    <div class="profile-panel" id="profile-panel">
+      <div class="pp-header">
+        <div class="pp-avatar" id="pp-avatar">👨‍💼</div>
+        <div class="pp-head-info">
+          <div class="pp-name-row">
+            <span class="pp-name" id="pp-name">Guest</span>
+            <span class="pp-edit" onclick="openEditName()">✏️</span>
+          </div>
+          <div class="pp-uid">
+            UID: <b id="pp-uid">LK-00000000</b>
+            <span class="pp-copy" onclick="copyUID()">📋</span>
+          </div>
+        </div>
+        <div class="pp-close" onclick="closeProfile()">✕</div>
+      </div>
+
+      <div class="pp-balance-row">
+        <div class="pp-balance-card">
+          <div class="ppb-icon">🪙</div>
+          <div>
+            <div class="ppb-label">ব্যালেন্স</div>
+            <div class="ppb-value" id="pp-balance">0</div>
+          </div>
+        </div>
+        <div class="pp-balance-card">
+          <div class="ppb-icon">🏆</div>
+          <div>
+            <div class="ppb-label">জয় / ম্যাচ</div>
+            <div class="ppb-value" id="pp-stats">0 / 0</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pp-section">
+        <div class="pp-section-title">অ্যাভাটার</div>
+        <div class="avatar-grid" id="avatar-grid"></div>
+      </div>
+
+      <div class="pp-section">
+        <div class="pp-section-title">থিম ব্যাকগ্রাউন্ড কালার</div>
+        <div class="theme-grid" id="theme-grid"></div>
+      </div>
+
+      <div class="pp-menu">
+        <div class="pp-menu-item" onclick="openInboxScreen()">
+          <span class="mi-icon">💬</span>
+          <span class="mi-label">ইনবক্স</span>
+          <span class="mi-value" id="pp-inbox-count">0 টি চ্যাট ›</span>
+        </div>
+        <div class="pp-menu-item" onclick="openFriendsScreen()">
+          <span class="mi-icon">👥</span>
+          <span class="mi-label">বন্ধু তালিকা</span>
+          <span class="mi-value" id="pp-friends-count">0 জন ›</span>
+        </div>
+        <div class="pp-menu-item" onclick="openHowToPlay()">
+          <span class="mi-icon">📖</span>
+          <span class="mi-label">কিভাবে খেলতে হয়</span>
+          <span class="mi-value">নির্দেশনা ›</span>
+        </div>
+        <div class="pp-menu-item" onclick="openEditName()">
+          <span class="mi-icon">✏️</span>
+          <span class="mi-label">নাম পরিবর্তন</span>
+          <span class="mi-value">›</span>
+        </div>
+        <div class="pp-menu-item danger" onclick="resetProfile()">
+          <span class="mi-icon">↺</span>
+          <span class="mi-label">প্রোফাইল রিসেট</span>
+          <span class="mi-value">›</span>
+        </div>
+      </div>
+
+      <div class="pp-footer-note">
+        LUDO KING ONLINE EDITION · v1.0<br>
+        <span id="pp-login-state">গেস্ট মোডে খেলছেন</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="profile-overlay" id="howto-overlay" onclick="howtoOverlayClick(event)">
+    <div class="profile-panel">
+      <div class="howto-header">
+        <div class="howto-title">📖 কিভাবে খেলতে হয়</div>
+        <div class="pp-close" onclick="closeHowToPlay()">✕</div>
+      </div>
+      <ul class="howto-list">
+        <li><span class="ht-ico">🎯</span><span>প্রতিটি খেলোয়াড়ের <b>৪টি গুটি</b> থাকে। লক্ষ্য — চারটি গুটিই আগে হোমে পৌঁছানো।</span></li>
+        <li><span class="ht-ico">🎲</span><span>পালা এলে ডায়াইসে চাপ দিন। <b>৬</b> পড়লেই কেবল গুটি ইয়ার্ড থেকে বেরিয়ে বোর্ডে উঠবে।</span></li>
+        <li><span class="ht-ico">🔁</span><span><b>৬</b> পড়লে চাল দেওয়ার পর আপনি আবার ডায়াইস চালানোর সুযোগ পাবেন।</span></li>
+        <li><span class="ht-ico">⚔️</span><span>প্রতিপক্ষের গুটির ঘরে গেলে সেটি <b>কাটা</b> পড়ে ইয়ার্ডে ফিরে যায় — আর আপনি বোনাস চাল পান।</span></li>
+        <li><span class="ht-ico">⭐</span><span><b>তারাযুক্ত ঘর</b> হলো সেফ জোন। সেখানে কোনো গুটি কাটা যায় না।</span></li>
+        <li><span class="ht-ico">💰</span><span><b>বাজি ম্যাচে</b> এন্ট্রি ফি দিয়ে খেলুন। যে জিতবে সে মোট পুল থেকে <b>১০% সিস্টেম ফি</b> বাদ দিয়ে বাকি সব প্রাইজ হিসেবে পাবে।</span></li>
+        <li><span class="ht-ico">⚠️</span><span><b>রুম বাতিল বা টাইম শেষ</b> হলে সব খেলোয়াড়ের <b>সম্পূর্ণ টাকা ফেরত</b> পাবেন। কিন্তু <b>ম্যাচ চলাকালীন বের হলে</b> শুধু বের হওয়া খেলোয়াড়ের <b>৩০% টাকা কাটা</b> হবে, বাকি ৭০% ফেরত পাবে।</span></li>
+        <li><span class="ht-ico">👥</span><span><b>বন্ধু সিস্টেমে</b> UID সার্চ করে ফ্রেন্ড রিকোয়েস্ট পাঠান, গ্রহণ করুন।</span></li>
+        <li><span class="ht-ico">💬</span><span><b>ইনবক্সে</b> যেকোনো ইউজারের সাথে চ্যাট করুন। Message বাটনে ক্লিক করলেই নতুন বা পুরোনো চ্যাট ওপেন হবে।</span></li>
+        <li><span class="ht-ico">🏆</span><span>যে খেলোয়াড় সবার আগে <b>৪টি গুটি</b> হোমে পৌঁছাবে, সে-ই বিজয়ী।</span></li>
+      </ul>
+      <button class="mini-btn wide" onclick="closeHowToPlay()">বুঝেছি</button>
+    </div>
+  </div>
+
+  <div class="mini-overlay" id="name-overlay" onclick="nameOverlayClick(event)">
+    <div class="mini-card">
+      <div class="mini-title">নাম পরিবর্তন করুন</div>
+      <input class="mini-input" id="name-input" maxlength="14" placeholder="আপনার নাম লিখুন..." autocomplete="off">
+      <div class="mini-actions">
+        <button class="mini-btn ghost" onclick="closeNameEditor()">বাতিল</button>
+        <button class="mini-btn" onclick="saveName()">সেভ করুন</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="mini-overlay" id="exit-overlay" onclick="exitOverlayClick(event)">
+    <div class="mini-card">
+      <div class="mini-title">🚪 গেম থেকে বের হবেন?</div>
+      <div class="mini-text" id="exit-text">বর্তমান খেলাটি হারিয়ে যাবে। আপনি কি নিশ্চিত?</div>
+      <div class="mini-actions">
+        <button class="mini-btn ghost" onclick="closeExitConfirm()">বাতিল</button>
+        <button class="mini-btn danger" onclick="doExitGame()">বের হন</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== VS ANIMATION SCREEN ==================== -->
+  <div class="vs-screen" id="vs-screen">
+    <div class="vs-bg-rays"></div>
+    <div class="vs-flash"></div>
+    <div class="vs-content">
+      <div class="vs-side vs-left" id="vs-left"></div>
+      <div class="vs-center">
+        <div class="vs-text">VS</div>
+        <div class="vs-fight">FIGHT!</div>
+      </div>
+      <div class="vs-side vs-right" id="vs-right"></div>
+    </div>
+  </div>
+
+  <div class="lk-toast" id="lk-toast"></div>
+
+  <script src="{{ url_for('static', filename='ludo.js') }}"></script>
+</body>
+</html>
