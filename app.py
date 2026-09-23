@@ -38,7 +38,27 @@ def login_page():
     if session.get('user_phone'):
         return redirect(url_for('home'))
     return render_template('login.html')
+# --------------------------------------------------------------------------
+# Website Routes
+# --------------------------------------------------------------------------
+@app.route('/')
+def home():
+    if not session.get('user_phone'):
+        return redirect(url_for('login_page'))
+    return render_template('index.html')
 
+@app.route('/login')
+def login_page():
+    if session.get('user_phone'):
+        return redirect(url_for('home'))
+    return render_template('login.html')
+
+# --- ঠিক এখানে বসাবে ---
+@app.route('/speed-tap')
+def speed_tap():
+    if not session.get('user_phone'):
+        return redirect(url_for('login_page'))
+    return render_template('Speedtap.html')
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.json or {}
