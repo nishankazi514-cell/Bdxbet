@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BDXbet - Login / Register</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+:root {
+  --bg: #030712;
+  --card: rgba(10, 20, 36, 0.88);
+  --text: #ffffff;
+  --muted: #94a3b8;
+  --gold: #f29f1b;
+  --gold2: #d97706;
+  --border: rgba(224, 130, 29, 0.35);
+  --input-bg: rgba(255, 255, 255, 0.04);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+body {
+  background: var(--bg);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  position: relative;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: absolute;
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, rgba(242, 159, 27, 0.15) 0%, transparent 70%);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.login-card {
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  width: 100%;
+  max-width: 380px;
+  padding: 30px 24px;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5), 0 0 20px rgba(242, 159, 27, 0.1);
+  backdrop-filter: blur(12px);
+  position: relative;
+  z-index: 2;
+}
+
+.brand-header { text-align: center; margin-bottom: 24px; }
+.brand-logo {
+  width: 65px; height: 65px; border-radius: 50%;
+  border: 2px solid var(--gold); object-fit: cover;
+  box-shadow: 0 0 15px rgba(242, 159, 27, 0.3); margin-bottom: 10px;
+}
+.brand-title { font-size: 24px; font-weight: 900; color: #fff; letter-spacing: 0.5px; }
+.brand-title span { color: var(--gold); }
+.brand-subtitle { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+.form-group { margin-bottom: 16px; }
+.form-group label {
+  display: block; font-size: 11px; color: var(--muted);
+  margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+.input-box { position: relative; display: flex; align-items: center; }
+.input-box i.input-icon { position: absolute; left: 14px; color: var(--gold); font-size: 14px; }
+.input-box input {
+  width: 100%; background: var(--input-bg); border: 1px solid var(--border);
+  padding: 13px 40px; border-radius: 12px; color: #fff; font-size: 14px; outline: none;
+  transition: all 0.3s ease;
+}
+.input-box input:focus { border-color: var(--gold); box-shadow: 0 0 10px rgba(242, 159, 27, 0.2); background: rgba(255, 255, 255, 0.08); }
+
+.pwd-eye {
+  position: absolute; right: 14px; background: none;
+  border: none; color: var(--muted); cursor: pointer; font-size: 14px;
+}
+
+.form-options {
+  display: flex; justify-content: flex-end; align-items: center;
+  font-size: 12px; margin-bottom: 18px; color: var(--muted);
+}
+.forgot-link { color: var(--gold); text-decoration: none; font-weight: 600; }
+
+.submit-btn {
+  width: 100%; background: linear-gradient(135deg, var(--gold), var(--gold2));
+  color: #000; border: none; padding: 14px; border-radius: 12px;
+  font-weight: 900; font-size: 15px; cursor: pointer;
+  box-shadow: 0 4px 15px rgba(242, 159, 27, 0.3);
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+
+.divider { display: flex; align-items: center; margin: 22px 0; color: var(--muted); font-size: 12px; }
+.divider::before, .divider::after { content: ''; flex: 1; border-bottom: 1px solid var(--border); }
+.divider span { padding: 0 10px; }
+
+.toggle-box { text-align: center; font-size: 13px; color: var(--muted); }
+.toggle-link { color: var(--gold); font-weight: 800; text-decoration: none; cursor: pointer; }
+
+.back-home { display: block; text-align: center; margin-top: 20px; font-size: 12px; color: var(--muted); text-decoration: none; }
+
+.toast-wrap { position: fixed; top: 20px; right: 15px; left: 15px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.toast {
+  background: #1e293b; color: #fff; padding: 12px 18px; border-radius: 12px;
+  font-size: 13px; display: flex; align-items: center; gap: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5); border: 1px solid var(--border);
+  animation: slideIn .3s ease; max-width: 350px; width: 100%;
+}
+.toast.success { background: #065f46; border-color: #10b981; }
+.toast.error { background: #7f1d1d; border-color: #ef4444; }
+.toast.info { background: #1e3a8a; border-color: #3b82f6; }
+@keyframes slideIn { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+</style>
+</head>
+<body>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<div class="login-card">
+  <div class="brand-header">
+    <img src="https://via.placeholder.com/65/f29f1b/000?text=BDX" alt="BDXbet" class="brand-logo">
+    <div class="brand-title">BDX<span>bet</span></div>
+    <div class="brand-subtitle" id="formSubtitle">আপনার অ্যাকাউন্টে লগইন করুন</div>
+  </div>
+
+  <form id="loginForm" onsubmit="handleAuthSubmit(event, 'login')">
+    <div class="form-group">
+      <label>মোবাইল নম্বর</label>
+      <div class="input-box">
+        <i class="fa-solid fa-phone input-icon"></i>
+        <input type="tel" id="loginPhone" placeholder="017XXXXXXXX" required>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>পাসওয়ার্ড</label>
+      <div class="input-box">
+        <i class="fa-solid fa-lock input-icon"></i>
+        <input type="password" id="loginPwd" placeholder="••••••••" required>
+        <button type="button" class="pwd-eye" onclick="togglePwd('loginPwd', this)"><i class="fa-regular fa-eye-slash"></i></button>
+      </div>
+    </div>
+    <div class="form-options">
+      <a href="https://t.me/your_telegram_username" target="_blank" class="forgot-link">পাসওয়ার্ড ভুলে গেছেন?</a>
+    </div>
+    <button type="submit" class="submit-btn"><i class="fa-solid fa-right-to-bracket"></i> লগইন করুন</button>
+  </form>
+
+  <form id="registerForm" style="display:none;" onsubmit="handleAuthSubmit(event, 'register')">
+    <div class="form-group">
+      <label>মোবাইল নম্বর</label>
+      <div class="input-box">
+        <i class="fa-solid fa-phone input-icon"></i>
+        <input type="tel" id="regPhone" placeholder="017XXXXXXXX" required>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>পাসওয়ার্ড</label>
+      <div class="input-box">
+        <i class="fa-solid fa-lock input-icon"></i>
+        <input type="password" id="regPwd" placeholder="কমপক্ষে ৬ অক্ষর" required minlength="6">
+        <button type="button" class="pwd-eye" onclick="togglePwd('regPwd', this)"><i class="fa-regular fa-eye-slash"></i></button>
+      </div>
+    </div>
+    <button type="submit" class="submit-btn"><i class="fa-solid fa-user-plus"></i> রেজিস্টার করুন</button>
+  </form>
+
+  <div class="divider"><span>অথবা</span></div>
+
+  <div class="toggle-box" id="toggleText">
+    অ্যাকাউন্ট নেই? <span class="toggle-link" onclick="switchView('register')">রেজিস্ট্রেশন করুন</span>
+  </div>
+
+  <a href="/" class="back-home"><i class="fa-solid fa-arrow-left"></i> ড্যাশবোর্ডে ফিরে যান</a>
+</div>
+
+<script>
+function showToast(msg, type='info') {
+  const wrap = document.getElementById('toastWrap');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  const icons = { success:'fa-circle-check', error:'fa-circle-exclamation', info:'fa-circle-info' };
+  el.innerHTML = `<i class="fa-solid ${icons[type]||icons.info}"></i><span>${msg}</span>`;
+  wrap.appendChild(el);
+  setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(-100%)';
+    el.style.transition = 'all .3s ease';
+    setTimeout(()=>el.remove(), 300);
+  }, 3000);
+}
+
+function togglePwd(inputId, btn) {
+  const input = document.getElementById(inputId);
+  const icon = btn.querySelector('i');
+  if (input.type === 'password') {
+    input.type = 'text'; icon.classList.replace('fa-eye-slash', 'fa-eye');
+  } else {
+    input.type = 'password'; icon.classList.replace('fa-eye', 'fa-eye-slash');
+  }
+}
+
+function switchView(view) {
+  const loginForm = document.getElementById('loginForm');
+  const regForm = document.getElementById('registerForm');
+  const subtitle = document.getElementById('formSubtitle');
+  const toggleText = document.getElementById('toggleText');
+
+  if (view === 'register') {
+    loginForm.style.display = 'none'; regForm.style.display = 'block';
+    subtitle.textContent = 'নতুন অ্যাকাউন্ট তৈরি করুন';
+    toggleText.innerHTML = 'অ্যাকাউন্ট আছে? <span class="toggle-link" onclick="switchView(\'login\')">লগইন করুন</span>';
+  } else {
+    regForm.style.display = 'none'; loginForm.style.display = 'block';
+    subtitle.textContent = 'আপনার অ্যাকাউন্টে লগইন করুন';
+    toggleText.innerHTML = 'অ্যাকাউন্ট নেই? <span class="toggle-link" onclick="switchView(\'register\')">রেজিস্ট্রেশন করুন</span>';
+  }
+}
+
+async function handleAuthSubmit(event, type) {
+  event.preventDefault();
+  const endpoint = type === 'login' ? '/api/login' : '/api/register';
+  const phone = type === 'login' ? document.getElementById('loginPhone').value.trim() : document.getElementById('regPhone').value.trim();
+  const password = type === 'login' ? document.getElementById('loginPwd').value : document.getElementById('regPwd').value;
+
+  const bdPhoneRegex = /^01[3-9]\d{8}$/;
+  if (!bdPhoneRegex.test(phone)) {
+    return showToast('সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন (01XXXXXXXXX)', 'error');
+  }
+
+  if (password.length < 6) {
+    return showToast('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে', 'error');
+  }
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, password })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      showToast(data.message, 'success');
+      setTimeout(() => { window.location.href = '/'; }, 1000);
+    } else {
+      showToast(data.message, 'error');
+    }
+  } catch (err) {
+    showToast('সার্ভারে সংযোগে সমস্যা হয়েছে!', 'error');
+  }
+}
+
+async function checkAlreadyLoggedIn() {
+  try {
+    const res = await fetch('/api/user');
+    const data = await res.json();
+    if (data.loggedIn) {
+      window.location.href = '/';
+    }
+  } catch(e){}
+}
+
+window.onload = checkAlreadyLoggedIn;
+</script>
+</body>
+</html>
