@@ -51,6 +51,21 @@ def ludo_game():
     if not session.get('user_phone'):
         return redirect(url_for('login_page'))
     return render_template('ludo.html')
+    # --- Friend Search API ---
+@app.route('/api/friend/search', methods=['POST'])
+def api_friend_search():
+    data = request.json or {}
+    uid = data.get('uid', '').strip()
+    
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, phone, balance FROM users WHERE phone = ?", (uid,))
+    user = cursor.fetchone()
+    conn.close()
+    
+    if user:
+        return jsonify({'success': True, 'user': {'uid': user[1], 'name': f"User {user[1][-4:]}", 'avatar': '👨‍💼'}})
+    return jsonify({'success': False, 'message': 'User not found'})
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.json or {}
