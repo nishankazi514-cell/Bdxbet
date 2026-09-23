@@ -58,8 +58,7 @@ def api_friend_search():
     uid = data.get('uid', '').strip()
     
     conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, phone, balance FROM users WHERE phone = ?", (uid,))
+    cursor.execute("SELECT id, phone, balance FROM users WHERE phone LIKE ? OR id LIKE ?", (f"%{uid}%", f"%{uid}%"))
     user = cursor.fetchone()
     conn.close()
     
