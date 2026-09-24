@@ -1909,27 +1909,38 @@ function renderFriendsScreen() {
 function doFriendSearch() {
   const input = document.getElementById('fr-search-input');
   if (!input) return;
-  const q = (input.value || '').trim();
+
+  const q = (input.value || '').trim().toUpperCase();
   if (!q) { showToast('⚠️ ইউজার আইডি লিখুন'); return; }
 
-  fetch('/api/friend/search', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ uid: q })
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (data.success) {
-      frSearchResult = { found: true, user: data.user };
-    } else {
-      frSearchResult = { found: false, query: q };
-    }
-    renderFriendsScreen();
-    vibrate(15);
-  })
-  .catch(err => {
-    showToast('সার্ভার কানেকশনে সমস্যা হয়েছে');
-  });
+  syncCurrentUserToDB();
+
+  let found = usersDB[q] || null;
+
+  if (!found && !q.startsWith('LK-')) {
+    found = usersDB['LK-' + q] || null;
+  }
+
+  if (!found) {
+    const byName = Object.values(usersDB).find(
+      u => (u.name || '').toUpperCase() === q
+    );
+    if (byName) found = byName;
+  }
+
+  if (!found) {
+    const key = Object.keys(usersDB).find(k => k.toUpperCase() === q);
+    if (key) found = usersDB[key];
+  }
+
+  if (found) {
+    frSearchResult = { found: true, user: found };
+  } else {
+    frSearchResult = { found: false, query: q };
+  }
+
+  renderFriendsScreen();
+  vibrate(15);
 }
 
 function buildSearchResultCard(res) {
