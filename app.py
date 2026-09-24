@@ -53,25 +53,33 @@ def ludo_game():
     return render_template('ludo.html')
 @app.route('/api/friend/search', methods=['POST'])
 def api_friend_search():
-    data = request.json or {}
-    uid = data.get('uid', '').strip()
+    try:
+        data = request.json or {}
+        uid = data.get('uid', '').strip()
+        if not uid:
+            return jsonify({'success': False, 'message': 'UID দিন'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE phone = ? OR id = ? OR phone LIKE ? OR id LIKE ?", 
+                       (uid, uid, f"%{uid}%", f"%{uid}%"))
+        user = cursor.fetchone()
+        conn.close()
+        
+        if user:
+            phone_val = str(user[1] if len(user) > 1 else uid)
+            return jsonify({
+                'success': True, 
+                'user': {
+                    'uid': phone_val, 
+                    'name': f"User {phone_val[-4:] if len(phone_val) >= 4 else phone_val}", 
+                    'avatar': '👨‍💼'
+                }
+            })
+        return jsonify({'success': False, 'message': 'User not found'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
 
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, phone, balance FROM users WHERE id LIKE ? OR phone LIKE ?", (f"%{uid}%", f"%{uid}%"))
-    user = cursor.fetchone()
-    conn.close()
-
-    if user:
-        return jsonify({
-            'success': True, 
-            'user': {
-                'uid': user[0] if user[0] else user[1], 
-                'name': f"User {user[1][-4:]}", 
-                'avatar': '👨‍💼'
-            }
-        })
-    return jsonify({'success': False, 'message': 'User not found'})
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.json or {}
