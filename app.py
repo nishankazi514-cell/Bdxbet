@@ -111,7 +111,9 @@ def user_to_dict(u):
         'vip': u['vip'],
         'phone': u['phone'],
     }
-
+@app.route('/ping999')
+def ping999():
+    return 'NEW_CODE_IS_LIVE_2026'
 
 @app.route('/')
 def home():
