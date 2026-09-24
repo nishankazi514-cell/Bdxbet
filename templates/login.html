@@ -390,9 +390,9 @@
       const data = await res.json();
 
       if (data.success) {
-        showMsg('✅ ' + (data.message || 'সফল!') + ' — প্রবেশ করা হচ্ছে...', 'ok');
-        setTimeout(() => { window.location.href = '/ludo'; }, 700);
-      } else {
+          showMsg('✅ ' + (data.message || 'সফল!'), 'success');
+          setTimeout(() => { window.location.href = '/'; }, 700);
+        } else {
         showMsg('❌ ' + (data.message || 'সমস্যা হয়েছে'), 'err');
         btn.disabled = false;
         btn.innerText = originalText;
