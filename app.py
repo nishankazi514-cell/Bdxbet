@@ -9,16 +9,21 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'bdxbet_secure_secret_ke
 def init_db():
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
-    # Ekhane id ke TEXT kora holo jate 'LK-XXXXXX' thikvabe save hote pare
+    # ডাটাবেজে id হলো অটো-ইনক্রিমেন্ট সংখ্যা এবং uid হলো আপনার 'LK-XXXXXX' কোড
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid TEXT,
             phone TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
             balance REAL DEFAULT 2500.0,
             vip INTEGER DEFAULT 0
         )
-    ''')
+    ''/.) # safety for existing table columns
+    try:
+        c.execute('ALTER TABLE users ADD COLUMN uid TEXT')
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
 
@@ -58,17 +63,20 @@ def api_friend_search():
         
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE phone = ? OR id = ? OR phone LIKE ? OR id LIKE ?", 
+        # এখন সরাসরি uid এবং phone কলামে সার্চ করা হবে
+        cursor.execute("SELECT * FROM users WHERE phone = ? OR uid = ? OR phone LIKE ? OR uid LIKE ?", 
                        (uid, uid, f"%{uid}%", f"%{uid}%"))
         user = cursor.fetchone()
         conn.close()
         
         if user:
-            phone_val = str(user[1] if len(user) > 1 else uid)
+            # user[2] হলো phone অথবা user[1] হলো uid
+            u_code = str(user[1] if user[1] else user[2])
+            phone_val = str(user[2])
             return jsonify({
                 'success': True, 
                 'user': {
-                    'uid': phone_val, 
+                    'uid': u_code, 
                     'name': f"User {phone_val[-4:] if len(phone_val) >= 4 else phone_val}", 
                     'avatar': '👨‍💼'
                 }
@@ -93,9 +101,9 @@ def register():
     c = conn.cursor()
     try:
         c.execute("""
-            INSERT INTO users (id, phone, password, balance, vip) 
+            INSERT INTO users (uid, phone, password, balance, vip) 
             VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(phone) DO UPDATE SET password=excluded.password
+            ON CONFLICT(phone) DO UPDATE SET password=excluded.password, uid=excluded.uid
         """, (uid, phone, hashed_password, 2500.0, 0))
         conn.commit()
         session['user_phone'] = phone
