@@ -86,22 +86,25 @@ def register():
     password = data.get('password', '')
 
     if not phone or not password:
-        return jsonify({'success': False, 'message': 'সব ঘর পূরণ করুন!'}), 400
+        return jsonify({'success': False, 'message': 'Phone and password required'})
 
     hashed_password = generate_password_hash(password)
+    # Ekhane ekta unique UID toiri kora hocche
+    uid = 'LK-' + phone[-6:].upper()
 
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
     try:
-        c.execute('INSERT INTO users (phone, password, balance) VALUES (?, ?, ?)', (phone, hashed_password, 50.0))
+        # Table-e id ba uid column thakte hobe
+        c.execute("INSERT INTO users (id, phone, password, balance, vip) VALUES (?, ?, ?, ?, ?)", 
+                  (uid, phone, hashed_password, 2500, 0))
         conn.commit()
         session['user_phone'] = phone
-        return jsonify({'success': True, 'message': 'রেজিস্ট্রেশন সফল! ৳৫০ বোনাস যোগ হয়েছে।'})
+        return jsonify({'success': True, 'message': 'Registration successful'})
     except sqlite3.IntegrityError:
-        return jsonify({'success': False, 'message': 'এই নম্বর দিয়ে ইতিমধ্যে অ্যাকাউন্ট রয়েছে!'}), 400
+        return jsonify({'success': False, 'message': 'Phone number already registered'})
     finally:
         conn.close()
-
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.json or {}
