@@ -1,9 +1,10 @@
 /* ============================================================
-   LUDO KING — FULL ludo.js  (Server-backed friends + chat)
+   LUDO KING — COMPLETE ludo.js
+   Server-backed Friends + Chat + Game Logic
    ============================================================ */
 
 /* ============================================================
-   ======================  PROFILE / ACCOUNT  =================
+   ============ CONSTANTS & PROFILE ===========================
    ============================================================ */
 const STORAGE_KEY = 'ludoking_profile_v1';
 const SETTINGS_KEY = 'ludoking_settings_v1';
@@ -37,6 +38,15 @@ let currentRoom = null;
 let gameActive = false;
 let amQuitter = false;
 
+let serverFriends = { friends: [], incoming: [], outgoing: [] };
+let inboxConversations = [];
+let currentChatUserId = null;
+let frSearchResult = null;
+let friendsActiveTab = 'list';
+
+/* ============================================================
+   ============ UTILITIES =====================================
+   ============================================================ */
 function generateUID() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let s = '';
@@ -81,6 +91,9 @@ function escapeHtml(s) {
   })[c]);
 }
 
+/* ============================================================
+   ============ PROFILE LOAD/SAVE =============================
+   ============================================================ */
 function loadProfile() {
   let p = {
     uid: '', name: '', avatar: '👨‍💼', coins: 0,
@@ -116,16 +129,7 @@ function applyTheme(themeId) {
 }
 
 /* ============================================================
-   ==================== SERVER FRIENDS STATE ==================
-   ============================================================ */
-let serverFriends = { friends: [], incoming: [], outgoing: [] };
-let inboxConversations = [];
-let currentChatUserId = null;
-let frSearchResult = null;
-let friendsActiveTab = 'list';
-
-/* ============================================================
-   ======================== PROFILE UI ========================
+   ============ PROFILE UI ====================================
    ============================================================ */
 function renderProfileUI() {
   if (!profile) return;
@@ -204,6 +208,9 @@ function updateSettingsUI() {
   });
 }
 
+/* ============================================================
+   ============ PROFILE ACTIONS ===============================
+   ============================================================ */
 function openProfile() {
   getAudioCtx();
   renderProfileUI();
@@ -235,6 +242,7 @@ function selectTheme(id) {
 
 function copyUID() {
   const uid = profile.uid || '';
+  if (!uid) { showToast('UID নেই'); return; }
   const done = () => showToast('UID কপি হয়েছে: ' + uid);
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(uid).then(done).catch(() => fallbackCopy(uid, done));
@@ -284,7 +292,7 @@ function closeHowToPlay() { document.getElementById('howto-overlay').classList.r
 function howtoOverlayClick(e) { if (e.target.id === 'howto-overlay') closeHowToPlay(); }
 
 /* ============================================================
-   ============ "ক্লাসিক" NAV BUTTON FUNCTION  ================
+   ============ CLASSIC NAV ===================================
    ============================================================ */
 function openClassicMode() {
   getAudioCtx();
@@ -300,7 +308,7 @@ function openClassicMode() {
 }
 
 /* ============================================================
-   ==================  VS ANIMATION SCREEN  ==================
+   ============ VS SCREEN =====================================
    ============================================================ */
 const VS_BOT_POOL = [
   { name: 'Rahim',  avatar: '🏎️' },
@@ -365,18 +373,6 @@ function playVSSound() {
   gain2.gain.exponentialRampToValueAtTime(0.0001, t2 + 0.35);
   osc2.connect(gain2); gain2.connect(ctx.destination);
   osc2.start(t2); osc2.stop(t2 + 0.36);
-  const t3 = now + 0.55;
-  [880, 1174, 1568].forEach((freq, i) => {
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = 'sine'; o.frequency.value = freq;
-    const st = t3 + i * 0.06;
-    g.gain.setValueAtTime(0.0001, st);
-    g.gain.exponentialRampToValueAtTime(0.12, st + 0.008);
-    g.gain.exponentialRampToValueAtTime(0.0001, st + 0.35);
-    o.connect(g); g.connect(ctx.destination);
-    o.start(st); o.stop(st + 0.36);
-  });
 }
 
 function buildVSPlayerCard(p) {
@@ -431,7 +427,7 @@ function showVSScreen(vsPlayers, mode, callback) {
 }
 
 /* ============================================================
-   ============ MATCH TYPE / BET AMOUNT  LOGIC  ==============
+   ============ MATCH TYPE / BET ==============================
    ============================================================ */
 function selectMatchType(mode) {
   getAudioCtx();
@@ -542,7 +538,7 @@ function updateBetPreview() {
 }
 
 /* ============================================================
-   ====================  PRIVATE ROOM SYSTEM  ================
+   ============ PRIVATE ROOM ==================================
    ============================================================ */
 function startBetMatch() {
   const amt = pendingBetAmount;
@@ -781,7 +777,7 @@ function shareRoom(platform) {
 }
 
 /* ============================================================
-   ============  GLOBAL ROOM SYSTEM  =========================
+   ============ GLOBAL ROOM ===================================
    ============================================================ */
 let globalRooms = [];
 let roomTickInterval = null;
@@ -1080,7 +1076,7 @@ function confirmCreateRoom() {
   renderGlobalRooms();
 }
 
-/* ================= PROFILE ACTION POPUP ================= */
+/* ================= PROFILE ACTION ================= */
 function openProfileAction(userId, name, photo) {
   paCurrentUserId = userId;
   document.getElementById('pa-avatar').innerText = photo || '👤';
@@ -1114,7 +1110,7 @@ function onAddFriendClick() {
 }
 
 /* ============================================================
-   ====================  SETTINGS  ============================
+   ============ SETTINGS ======================================
    ============================================================ */
 function openSettings() {
   getAudioCtx();
@@ -1157,7 +1153,7 @@ function vibrate(pattern) {
 }
 
 /* ============================================================
-   ============ EXIT / CANCEL LOGIC  =========================
+   ============ EXIT / CANCEL =================================
    ============================================================ */
 function goHome() { openExitConfirm(); }
 
@@ -1244,7 +1240,7 @@ function doExitGame() {
 }
 
 /* ============================================================
-   ==================  LudoAuth (সার্ভার হুক)  ===============
+   ============ LudoAuth ======================================
    ============================================================ */
 const LudoAuth = {
   currentUser: null,
@@ -1317,7 +1313,7 @@ const LudoAuth = {
 window.LudoAuth = LudoAuth;
 
 /* ============================================================
-   =======================  GAME LOGIC  =======================
+   ============ GAME LOGIC ====================================
    ============================================================ */
 const ALL_PLAYERS = ['blue', 'red', 'green', 'yellow'];
 let activePlayers = ['blue', 'red', 'green', 'yellow'];
@@ -1383,15 +1379,6 @@ function playDiceRollSound() {
     nGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
     noise.connect(bp); bp.connect(nGain); nGain.connect(ctx.destination);
     noise.start(t); noise.stop(t + 0.05);
-    const osc = ctx.createOscillator();
-    const oGain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(160, t);
-    osc.frequency.exponentialRampToValueAtTime(80, t + 0.035);
-    oGain.gain.setValueAtTime(c.vol * 0.85, t);
-    oGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
-    osc.connect(oGain); oGain.connect(ctx.destination);
-    osc.start(t); osc.stop(t + 0.05);
   });
 }
 function playSixSound() {
@@ -1425,18 +1412,6 @@ function playCaptureSound() {
   gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
   osc.connect(gain); gain.connect(ctx.destination);
   osc.start(now); osc.stop(now + 0.33);
-  const bufferSize = ctx.sampleRate * 0.12;
-  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 3);
-  const noise = ctx.createBufferSource(); noise.buffer = buffer;
-  const noiseGain = ctx.createGain();
-  noiseGain.gain.setValueAtTime(0.15, now);
-  noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
-  const noiseFilter = ctx.createBiquadFilter();
-  noiseFilter.type = 'lowpass'; noiseFilter.frequency.value = 800;
-  noise.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(ctx.destination);
-  noise.start(now);
 }
 function playSafeZoneSound() {
   vibrate([20, 20, 20]);
@@ -1818,7 +1793,7 @@ function startGame(mode, isBetMatch, roomPlayers) {
 }
 
 /* ============================================================
-   ==================  FRIENDS SYSTEM (SERVER)  ===============
+   ============ FRIENDS (SERVER) ==============================
    ============================================================ */
 function updateFriendsBadge() {
   const count = (serverFriends.incoming || []).length;
@@ -2177,7 +2152,7 @@ function rejectFriendRequest(fromUid) {
 }
 
 /* ============================================================
-   ==================  INBOX / CHAT (SERVER)  ================
+   ============ INBOX / CHAT (SERVER) =========================
    ============================================================ */
 function updateInboxBadge() {
   let total = 0;
@@ -2377,7 +2352,7 @@ window.openInboxScreen = openInboxScreen;
 window.openChatWith = openChatWith;
 
 /* ============================================================
-   ====================== PAGE LOAD ==========================
+   ============ PAGE LOAD =====================================
    ============================================================ */
 window.addEventListener('load', async () => {
   loadSettings();
@@ -2398,7 +2373,6 @@ window.addEventListener('load', async () => {
   if (user) {
     refreshFriendsFromServer();
     refreshInboxFromServer();
-    // হালকা polling — প্রতি 15 সেকেন্ডে নতুন মেসেজ/রিকোয়েস্ট চেক
     setInterval(() => {
       if (profile.loggedIn) {
         refreshInboxFromServer();
