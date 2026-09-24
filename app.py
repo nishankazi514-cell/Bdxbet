@@ -9,7 +9,6 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'bdxbet_secure_secret_ke
 def init_db():
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
-    # ডাটাবেজে id হলো অটো-ইনক্রিমেন্ট সংখ্যা এবং uid হলো আপনার 'LK-XXXXXX' কোড
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -19,7 +18,7 @@ def init_db():
             balance REAL DEFAULT 2500.0,
             vip INTEGER DEFAULT 0
         )
-    ''/.) # safety for existing table columns
+    ''')
     try:
         c.execute('ALTER TABLE users ADD COLUMN uid TEXT')
     except sqlite3.OperationalError:
@@ -63,14 +62,12 @@ def api_friend_search():
         
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
-        # এখন সরাসরি uid এবং phone কলামে সার্চ করা হবে
         cursor.execute("SELECT * FROM users WHERE phone = ? OR uid = ? OR phone LIKE ? OR uid LIKE ?", 
                        (uid, uid, f"%{uid}%", f"%{uid}%"))
         user = cursor.fetchone()
         conn.close()
         
         if user:
-            # user[2] হলো phone অথবা user[1] হলো uid
             u_code = str(user[1] if user[1] else user[2])
             phone_val = str(user[2])
             return jsonify({
