@@ -11,6 +11,9 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'bdxbet_secure_secret_ke
 DB_FILE = 'users.db'
 
 
+# ============================================================
+# DATABASE
+# ============================================================
 def get_db():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
@@ -90,6 +93,9 @@ def init_db():
 init_db()
 
 
+# ============================================================
+# HELPERS
+# ============================================================
 def current_user():
     phone = session.get('user_phone')
     if not phone:
@@ -111,22 +117,33 @@ def user_to_dict(u):
         'vip': u['vip'],
         'phone': u['phone'],
     }
-@app.route('/ping999')
-def ping999():
-    return 'NEW_CODE_IS_LIVE_2026'
 
+
+# ============================================================
+# PAGE ROUTES
+# ============================================================
 @app.route('/')
 def home():
+    """রুট URL — লগইন থাকলে /ludo, নাহলে /login"""
     if not session.get('user_phone'):
         return redirect(url_for('login_page'))
-    return render_template('index.html')
+    return redirect(url_for('ludo_game'))
 
 
 @app.route('/login')
 def login_page():
+    """লগইন পেজ — ইতিমধ্যে লগইন থাকলে /ludo তে পাঠায়"""
     if session.get('user_phone'):
-        return redirect(url_for('home'))
+        return redirect(url_for('ludo_game'))
     return render_template('login.html')
+
+
+@app.route('/ludo')
+def ludo_game():
+    """লুডো গেম — লগইন না থাকলে /login এ পাঠায়"""
+    if not session.get('user_phone'):
+        return redirect(url_for('login_page'))
+    return render_template('ludo.html')
 
 
 @app.route('/speed-tap')
@@ -136,13 +153,9 @@ def speed_tap():
     return render_template('Speedtap.html')
 
 
-@app.route('/ludo')
-def ludo_game():
-    if not session.get('user_phone'):
-        return redirect(url_for('login_page'))
-    return render_template('ludo.html')
-
-
+# ============================================================
+# AUTH API
+# ============================================================
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.json or {}
@@ -165,8 +178,10 @@ def register():
                       (hashed, uid, name or None, avatar, phone))
         else:
             uid = generate_unique_uid(c)
-            c.execute("INSERT INTO users (uid, phone, password, name, avatar, balance, vip, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                      (uid, phone, hashed, name or None, avatar, 2500.0, 0, int(time.time())))
+            c.execute(
+                "INSERT INTO users (uid, phone, password, name, avatar, balance, vip, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (uid, phone, hashed, name or None, avatar, 2500.0, 0, int(time.time()))
+            )
         conn.commit()
         session['user_phone'] = phone
         return jsonify({'success': True, 'uid': uid, 'message': 'রেজিস্ট্রেশন সফল'})
@@ -199,6 +214,12 @@ def logout():
     return jsonify({'success': True})
 
 
+@app.route('/logout')
+def logout_page():
+    session.pop('user_phone', None)
+    return redirect(url_for('login_page'))
+
+
 @app.route('/api/user', methods=['GET'])
 def get_user():
     u = current_user()
@@ -225,6 +246,9 @@ def update_user():
     return jsonify({'success': True})
 
 
+# ============================================================
+# FRIEND API
+# ============================================================
 @app.route('/api/friend/search', methods=['POST'])
 def api_friend_search():
     u = current_user()
@@ -283,8 +307,10 @@ def send_friend_request():
         conn.close()
         return jsonify({'success': True, 'status': 'became_friends'})
 
-    conn.execute("INSERT OR REPLACE INTO friend_requests (from_uid, to_uid, status, created_at) VALUES (?, ?, 'pending', ?)",
-                 (u['uid'], target, int(time.time())))
+    conn.execute(
+        "INSERT OR REPLACE INTO friend_requests (from_uid, to_uid, status, created_at) VALUES (?, ?, 'pending', ?)",
+        (u['uid'], target, int(time.time()))
+    )
     conn.commit()
     conn.close()
     return jsonify({'success': True, 'status': 'request_sent'})
@@ -351,6 +377,9 @@ def friend_list():
     })
 
 
+# ============================================================
+# CHAT API
+# ============================================================
 @app.route('/api/messages/send', methods=['POST'])
 def send_message():
     u = current_user()
