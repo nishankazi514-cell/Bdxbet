@@ -11,9 +11,6 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'bdxbet_secure_secret_ke
 DB_FILE = 'users.db'
 
 
-# ============================================================
-# DATABASE
-# ============================================================
 def get_db():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
@@ -90,9 +87,6 @@ def init_db():
 init_db()
 
 
-# ============================================================
-# HELPERS
-# ============================================================
 def current_user():
     phone = session.get('user_phone')
     if not phone:
@@ -121,7 +115,6 @@ def user_to_dict(u):
 # ============================================================
 @app.route('/')
 def home():
-    """ড্যাশবোর্ড — লগইন না থাকলে লগইন পেজে পাঠায়"""
     if not session.get('user_phone'):
         return redirect(url_for('login_page'))
     return render_template('index.html')
@@ -129,7 +122,6 @@ def home():
 
 @app.route('/login')
 def login_page():
-    """লগইন পেজ — লগইন থাকলে ড্যাশবোর্ডে পাঠায়"""
     if session.get('user_phone'):
         return redirect(url_for('home'))
     return render_template('login.html')
@@ -137,7 +129,6 @@ def login_page():
 
 @app.route('/ludo')
 def ludo_game():
-    """লুডো গেম — লগইন না থাকলে লগইন পেজে পাঠায়"""
     if not session.get('user_phone'):
         return redirect(url_for('login_page'))
     return render_template('ludo.html')
