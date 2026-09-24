@@ -1906,28 +1906,30 @@ function renderFriendsScreen() {
   }
   updateFriendsBadge();
 }
-
 function doFriendSearch() {
   const input = document.getElementById('fr-search-input');
   if (!input) return;
-  const q = (input.value || '').trim().toUpperCase().replace(/\s+/g, '');
+  const q = (input.value || '').trim();
   if (!q) { showToast('⚠️ ইউজার আইডি লিখুন'); return; }
-  if (q.length < 4) { showToast('⚠️ কমপক্ষে ৪ অক্ষরের আইডি লিখুন'); return; }
 
-  syncCurrentUserToDB();
-
-  if (q === profile.uid) {
-    frSearchResult = { found: true, self: true, user: usersDB[profile.uid] };
-  } else {
-    const found = usersDB[q];
-    if (!found) {
-      frSearchResult = { found: false, query: q };
+  fetch('/api/friend/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uid: q })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      frSearchResult = { found: true, user: data.user };
     } else {
-      frSearchResult = { found: true, user: found };
+      frSearchResult = { found: false, query: q };
     }
-  }
-  renderFriendsScreen();
-  vibrate(15);
+    renderFriendsScreen();
+    vibrate(15);
+  })
+  .catch(err => {
+    showToast('সার্ভার কানেকশনে সমস্যা হয়েছে');
+  });
 }
 
 function buildSearchResultCard(res) {
