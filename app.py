@@ -4,30 +4,26 @@ from flask import Flask, render_template, request, jsonify, session, redirect, u
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-# Render dynamic environment secret key handling
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'bdxbet_secure_secret_key_2026')
 
 def init_db():
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
+    # Ekhane id ke TEXT kora holo jate 'LK-XXXXXX' thikvabe save hote pare
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT PRIMARY KEY,
             phone TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
-            balance REAL DEFAULT 0.0,
+            balance REAL DEFAULT 2500.0,
             vip INTEGER DEFAULT 0
         )
     ''')
     conn.commit()
     conn.close()
 
-# Initialize DB on start
 init_db()
 
-# --------------------------------------------------------------------------
-# Website Routes
-# --------------------------------------------------------------------------
 @app.route('/')
 def home():
     if not session.get('user_phone'):
@@ -51,6 +47,7 @@ def ludo_game():
     if not session.get('user_phone'):
         return redirect(url_for('login_page'))
     return render_template('ludo.html')
+
 @app.route('/api/friend/search', methods=['POST'])
 def api_friend_search():
     try:
@@ -95,12 +92,11 @@ def register():
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
     try:
-        # Jodi number age theke thake tahole update kore dibe, duplicate error dibe na
         c.execute("""
             INSERT INTO users (id, phone, password, balance, vip) 
             VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(phone) DO UPDATE SET password=excluded.password
-        """, (uid, phone, hashed_password, 2500, 0))
+        """, (uid, phone, hashed_password, 2500.0, 0))
         conn.commit()
         session['user_phone'] = phone
         return jsonify({'success': True, 'message': 'Registration successful'})
@@ -108,6 +104,7 @@ def register():
         return jsonify({'success': False, 'message': str(e)})
     finally:
         conn.close()
+
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.json or {}
