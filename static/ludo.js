@@ -1,4 +1,8 @@
 /* ============================================================
+   LUDO KING — FULL ludo.js  (Server-backed friends + chat)
+   ============================================================ */
+
+/* ============================================================
    ======================  PROFILE / ACCOUNT  =================
    ============================================================ */
 const STORAGE_KEY = 'ludoking_profile_v1';
@@ -65,6 +69,7 @@ function formatMsgTime(ts) {
 }
 function showToast(msg) {
   const el = document.getElementById('lk-toast');
+  if (!el) return;
   el.innerText = msg;
   el.classList.add('show');
   clearTimeout(el._t);
@@ -78,22 +83,15 @@ function escapeHtml(s) {
 
 function loadProfile() {
   let p = {
-    uid: '', name: '', avatar: '👨‍💼', coins: 2500,
-    theme: 'classic', matches: 0, wins: 0, loggedIn: false,
-    friends: [], friendRequests: [], sentRequests: []
+    uid: '', name: '', avatar: '👨‍💼', coins: 0,
+    theme: 'classic', matches: 0, wins: 0, loggedIn: false
   };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) Object.assign(p, JSON.parse(raw));
   } catch (e) {}
-  if (!p.uid) p.uid = generateUID();
-  if (!p.name) p.name = 'Guest' + Math.floor(1000 + Math.random() * 9000);
   if (!THEMES.some(t => t.id === p.theme)) p.theme = 'classic';
-  if (!Array.isArray(p.friends)) p.friends = [];
-  if (!Array.isArray(p.friendRequests)) p.friendRequests = [];
-  if (!Array.isArray(p.sentRequests)) p.sentRequests = [];
   profile = p;
-  saveProfile();
   return profile;
 }
 function saveProfile() {
@@ -117,42 +115,61 @@ function applyTheme(themeId) {
   root.style.setProperty('--theme-accent', t.accent);
 }
 
+/* ============================================================
+   ==================== SERVER FRIENDS STATE ==================
+   ============================================================ */
+let serverFriends = { friends: [], incoming: [], outgoing: [] };
+let inboxConversations = [];
+let currentChatUserId = null;
+let frSearchResult = null;
+let friendsActiveTab = 'list';
+
+/* ============================================================
+   ======================== PROFILE UI ========================
+   ============================================================ */
 function renderProfileUI() {
   if (!profile) return;
-  document.getElementById('mpp-avatar').innerText = profile.avatar;
-  document.getElementById('mpp-name').innerText = profile.name;
-  document.getElementById('mpp-coins').innerText = '🪙 ' + formatCoins(profile.coins);
-  document.getElementById('pp-avatar').innerText = profile.avatar;
-  document.getElementById('pp-name').innerText = profile.name;
-  document.getElementById('pp-uid').innerText = profile.uid;
-  document.getElementById('pp-balance').innerText = formatCoins(profile.coins);
-  document.getElementById('pp-stats').innerText = profile.wins + ' / ' + profile.matches;
+  const set = (id, v) => { const e = document.getElementById(id); if (e) e.innerText = v; };
+  set('mpp-avatar', profile.avatar);
+  set('mpp-name', profile.name || 'Guest');
+  set('mpp-coins', '🪙 ' + formatCoins(profile.coins));
+  set('pp-avatar', profile.avatar);
+  set('pp-name', profile.name || 'Guest');
+  set('pp-uid', profile.uid || '—');
+  set('pp-balance', formatCoins(profile.coins));
+  set('pp-stats', profile.wins + ' / ' + profile.matches);
 
   const loginState = document.getElementById('pp-login-state');
-  loginState.innerText = profile.loggedIn
-    ? '✅ সার্ভার অ্যাকাউন্টে লগইন করা আছে'
-    : 'গেস্ট মোডে খেলছেন (লোকাল প্রোফাইল)';
+  if (loginState) {
+    loginState.innerText = profile.loggedIn
+      ? '✅ সার্ভার অ্যাকাউন্টে লগইন করা আছে'
+      : 'গেস্ট মোডে খেলছেন (লোকাল প্রোফাইল)';
+  }
 
   const ag = document.getElementById('avatar-grid');
-  ag.innerHTML = '';
-  AVATARS.forEach(a => {
-    const chip = document.createElement('div');
-    chip.className = 'avatar-chip' + (a === profile.avatar ? ' selected' : '');
-    chip.innerText = a;
-    chip.onclick = () => selectAvatar(a);
-    ag.appendChild(chip);
-  });
+  if (ag) {
+    ag.innerHTML = '';
+    AVATARS.forEach(a => {
+      const chip = document.createElement('div');
+      chip.className = 'avatar-chip' + (a === profile.avatar ? ' selected' : '');
+      chip.innerText = a;
+      chip.onclick = () => selectAvatar(a);
+      ag.appendChild(chip);
+    });
+  }
 
   const tg = document.getElementById('theme-grid');
-  tg.innerHTML = '';
-  THEMES.forEach(t => {
-    const sw = document.createElement('div');
-    sw.className = 'theme-swatch' + (t.id === profile.theme ? ' selected' : '');
-    sw.title = t.name;
-    sw.style.background = `radial-gradient(circle at 35% 28%, ${t.c1}, ${t.c2})`;
-    sw.onclick = () => selectTheme(t.id);
-    tg.appendChild(sw);
-  });
+  if (tg) {
+    tg.innerHTML = '';
+    THEMES.forEach(t => {
+      const sw = document.createElement('div');
+      sw.className = 'theme-swatch' + (t.id === profile.theme ? ' selected' : '');
+      sw.title = t.name;
+      sw.style.background = `radial-gradient(circle at 35% 28%, ${t.c1}, ${t.c2})`;
+      sw.onclick = () => selectTheme(t.id);
+      tg.appendChild(sw);
+    });
+  }
 
   applyProfileToGameCard();
   updateSettingsUI();
@@ -162,14 +179,8 @@ function renderProfileUI() {
 function updateProfileMenuCounts() {
   const friendsEl = document.getElementById('pp-friends-count');
   const inboxEl = document.getElementById('pp-inbox-count');
-  if (friendsEl) {
-    const c = (profile.friends || []).length;
-    friendsEl.innerText = c + ' জন ›';
-  }
-  if (inboxEl) {
-    const c = getTotalConversationCount();
-    inboxEl.innerText = c + ' টি চ্যাট ›';
-  }
+  if (friendsEl) friendsEl.innerText = (serverFriends.friends || []).length + ' জন ›';
+  if (inboxEl) inboxEl.innerText = inboxConversations.length + ' টি চ্যাট ›';
 }
 
 function applyProfileToGameCard() {
@@ -177,7 +188,7 @@ function applyProfileToGameCard() {
   const nm = document.getElementById('name-blue');
   const cn = document.getElementById('coins-blue');
   if (av) av.innerText = profile.avatar;
-  if (nm) nm.innerText = profile.name;
+  if (nm) nm.innerText = profile.name || 'Guest';
   if (cn) cn.innerText = '🪙 ' + formatCoins(profile.coins);
 }
 
@@ -203,17 +214,27 @@ function profileOverlayClick(e) { if (e.target.id === 'profile-overlay') closePr
 function openProfileFromGame() { closeSettings(); setTimeout(openProfile, 260); }
 
 function selectAvatar(a) {
-  profile.avatar = a; saveProfile(); syncCurrentUserToDB(); renderProfileUI();
+  profile.avatar = a;
+  saveProfile();
+  renderProfileUI();
+  fetch('/api/user/update', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ avatar: a })
+  }).catch(() => {});
   showToast('অ্যাভাটার পরিবর্তন হয়েছে!');
 }
 function selectTheme(id) {
-  profile.theme = id; saveProfile(); applyTheme(id); renderProfileUI();
+  profile.theme = id;
+  saveProfile();
+  applyTheme(id);
+  renderProfileUI();
   const t = THEMES.find(x => x.id === id);
   showToast('থিম: ' + (t ? t.name : id));
 }
 
 function copyUID() {
-  const uid = profile.uid;
+  const uid = profile.uid || '';
   const done = () => showToast('UID কপি হয়েছে: ' + uid);
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(uid).then(done).catch(() => fallbackCopy(uid, done));
@@ -230,7 +251,7 @@ function fallbackCopy(text, cb) {
 
 function openEditName() {
   const inp = document.getElementById('name-input');
-  inp.value = profile.name;
+  inp.value = profile.name || '';
   document.getElementById('name-overlay').classList.add('show');
   setTimeout(() => inp.focus(), 120);
 }
@@ -242,16 +263,20 @@ function saveName() {
   if (val.length < 2) { showToast('কমপক্ষে ২ অক্ষরের নাম দিন'); return; }
   if (val.length > 14) val = val.slice(0, 14);
   profile.name = val;
-  if (LudoAuth.currentUser) LudoAuth.currentUser.name = val;
-  saveProfile(); syncCurrentUserToDB(); renderProfileUI(); closeNameEditor();
+  saveProfile();
+  renderProfileUI();
+  closeNameEditor();
+  fetch('/api/user/update', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: val })
+  }).catch(() => {});
   showToast('নাম সেভ হয়েছে: ' + val);
 }
 function resetProfile() {
   if (!confirm('প্রোফাইল রিসেট করলে নাম, UID, ব্যালেন্স সব নতুন হয়ে যাবে। আপনি নিশ্চিত?')) return;
   try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
-  LudoAuth.currentUser = null;
-  loadProfile(); applyTheme(profile.theme); renderProfileUI(); closeProfile();
-  showToast('প্রোফাইল রিসেট সম্পন্ন');
+  window.location.href = '/login';
 }
 
 function openHowToPlay() { document.getElementById('howto-overlay').classList.add('show'); }
@@ -517,7 +542,7 @@ function updateBetPreview() {
 }
 
 /* ============================================================
-   ====================  ROOM SYSTEM (প্রাইভেট)  ==============
+   ====================  PRIVATE ROOM SYSTEM  ================
    ============================================================ */
 function startBetMatch() {
   const amt = pendingBetAmount;
@@ -1073,7 +1098,7 @@ function paOverlayClick(e) {
 function onMessageClick() {
   if (!paCurrentUserId) { closeProfileAction(); return; }
   const uid = paCurrentUserId;
-  const u = usersDB[uid];
+  const u = (serverFriends.friends || []).find(x => x.uid === uid);
   closeProfileAction();
   openChatWith(uid, u ? u.name : 'User', u ? u.avatar : '👤');
 }
@@ -1224,44 +1249,69 @@ function doExitGame() {
 const LudoAuth = {
   currentUser: null,
   isLoggedIn() { return !!this.currentUser; },
+
+  async fetchServerUser() {
+    try {
+      const res = await fetch('/api/user');
+      const data = await res.json();
+      if (!data.loggedIn) {
+        this.currentUser = null;
+        profile.loggedIn = false;
+        saveProfile();
+        renderProfileUI();
+        return null;
+      }
+      this.currentUser = data;
+      profile.uid = data.uid || profile.uid;
+      profile.name = data.name || profile.name || 'Player';
+      profile.avatar = data.avatar || profile.avatar;
+      profile.coins = Number(data.coins) || 0;
+      profile.loggedIn = true;
+      saveProfile();
+      renderProfileUI();
+      return data;
+    } catch (e) {
+      console.warn('Server user fetch failed', e);
+      return null;
+    }
+  },
+
   setUser(user) {
     if (!user) return;
     this.currentUser = user;
     if (user.name) profile.name = String(user.name).slice(0, 14);
     if (user.avatar && AVATARS.includes(user.avatar)) profile.avatar = user.avatar;
     if (typeof user.coins === 'number') profile.coins = user.coins;
-    profile.uid = user.uid || (user.id ? 'LK-' + String(user.id).slice(-8).toUpperCase() : profile.uid);
+    if (user.uid) profile.uid = user.uid;
     profile.loggedIn = true;
     saveProfile();
-    syncCurrentUserToDB();
     renderProfileUI();
     showToast('স্বাগতম, ' + profile.name + '!');
   },
+
   setBalance(coins) {
     profile.coins = Number(coins) || 0;
     saveProfile();
-    syncCurrentUserToDB();
     renderProfileUI();
     const balEl = document.getElementById('bet-balance-val');
     if (balEl) balEl.innerText = formatCoins(profile.coins);
     const crBalEl = document.getElementById('cr-balance-val');
     if (crBalEl) crBalEl.innerText = formatCoins(profile.coins);
   },
+
   recordMatch(won) {
     profile.matches++;
     if (won) profile.wins++;
     saveProfile();
     renderProfileUI();
   },
-  logout() {
+
+  async logout() {
+    try { await fetch('/api/logout', { method: 'POST' }); } catch (e) {}
     this.currentUser = null;
     profile.loggedIn = false;
     try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
-    loadProfile();
-    applyTheme(profile.theme);
-    renderProfileUI();
-    closeProfile();
-    showToast('লগআউট সম্পন্ন');
+    window.location.href = '/login';
   }
 };
 window.LudoAuth = LudoAuth;
@@ -1488,6 +1538,8 @@ function pawnSVG(color) {
 
 function initBoard() {
   const board = document.getElementById('board');
+  if (!board) return;
+  board.querySelectorAll('.cell').forEach(c => c.remove());
   for (let r = 0; r < 15; r++) {
     for (let c = 0; c < 15; c++) {
       if ((r < 6 && c < 6) || (r < 6 && c > 8) || (r > 8 && c < 6) || (r > 8 && c > 8) || (r >= 6 && r <= 8 && c >= 6 && c <= 8)) continue;
@@ -1530,17 +1582,19 @@ function initBoard() {
     const coord = mainPathCoords[idx];
     if (gridCells[`${coord.r},${coord.c}`]) gridCells[`${coord.r},${coord.c}`].classList.add('star');
   });
-  ALL_PLAYERS.forEach(color => {
-    for (let i = 0; i < 4; i++) {
-      const pawnElem = document.createElement('div');
-      pawnElem.className = `pawn pawn-${color}`;
-      pawnElem.innerHTML = pawnSVG(color);
-      const pawnObj = { id: `${color}-${i}`, color: color, index: i, step: -1, element: pawnElem };
-      pawnElem.onclick = () => onPawnClick(pawnObj);
-      pawns.push(pawnObj);
-      renderPawn(pawnObj);
-    }
-  });
+  if (pawns.length === 0) {
+    ALL_PLAYERS.forEach(color => {
+      for (let i = 0; i < 4; i++) {
+        const pawnElem = document.createElement('div');
+        pawnElem.className = `pawn pawn-${color}`;
+        pawnElem.innerHTML = pawnSVG(color);
+        const pawnObj = { id: `${color}-${i}`, color: color, index: i, step: -1, element: pawnElem };
+        pawnElem.onclick = () => onPawnClick(pawnObj);
+        pawns.push(pawnObj);
+        renderPawn(pawnObj);
+      }
+    });
+  }
 }
 
 function renderPawn(pawn) {
@@ -1560,10 +1614,12 @@ function renderPawn(pawn) {
 
 function updateTurnUI() {
   ALL_PLAYERS.forEach(color => {
-    document.getElementById(`card-${color}`).classList.remove('card-active');
+    const el = document.getElementById(`card-${color}`);
+    if (el) el.classList.remove('card-active');
   });
   const activeColor = activePlayers[turnIndex];
-  document.getElementById(`card-${activeColor}`).classList.add('card-active');
+  const el = document.getElementById(`card-${activeColor}`);
+  if (el) el.classList.add('card-active');
   document.getElementById('status-text').innerText =
     `${activeColor.toUpperCase()}-এর চাল! আপনার ডায়াইসে চাপ দিন।`;
 }
@@ -1742,7 +1798,7 @@ function startGame(mode, isBetMatch, roomPlayers) {
   else activePlayers = ['blue', 'red', 'green', 'yellow'];
   ALL_PLAYERS.forEach(color => {
     const card = document.getElementById(`card-${color}`);
-    card.style.display = activePlayers.includes(color) ? '' : 'none';
+    if (card) card.style.display = activePlayers.includes(color) ? '' : 'none';
   });
   applyProfileToGameCard();
   const t = document.getElementById('tb-title');
@@ -1762,84 +1818,10 @@ function startGame(mode, isBetMatch, roomPlayers) {
 }
 
 /* ============================================================
-   ==================  FRIENDS SYSTEM  ========================
+   ==================  FRIENDS SYSTEM (SERVER)  ===============
    ============================================================ */
-const USERS_DB_KEY = 'ludoking_users_db_v1';
-const DEMO_FRIEND_REQ_KEY = 'ludoking_demo_friend_req_v1';
-
-const MOCK_USERS = [
-  { uid: 'LK-RAHIM001', name: 'Rahim',   avatar: '🏎️' },
-  { uid: 'LK-KARIM002', name: 'Karim',   avatar: '🐯' },
-  { uid: 'LK-JAMAL003', name: 'Jamal',   avatar: '👑' },
-  { uid: 'LK-NASIR004', name: 'Nasir',   avatar: '🦊' },
-  { uid: 'LK-SABBI005', name: 'Sabbir',  avatar: '🐼' },
-  { uid: 'LK-MITU0006', name: 'Mitu',    avatar: '👩‍💼' },
-  { uid: 'LK-RANA0007', name: 'Rana',    avatar: '🦁' },
-  { uid: 'LK-TANVI008', name: 'Tanvir',  avatar: '🐸' },
-  { uid: 'LK-SOHAN009', name: 'Sohan',   avatar: '🤖' },
-  { uid: 'LK-FAHIM010', name: 'Fahim',   avatar: '👽' }
-];
-
-let usersDB = {};
-let friendsActiveTab = 'list';
-let frSearchResult = null;
-
-function loadUsersDB() {
-  try {
-    const raw = localStorage.getItem(USERS_DB_KEY);
-    if (raw) usersDB = JSON.parse(raw) || {};
-  } catch (e) { usersDB = {}; }
-  if (typeof usersDB !== 'object' || usersDB === null) usersDB = {};
-}
-function saveUsersDB() {
-  try { localStorage.setItem(USERS_DB_KEY, JSON.stringify(usersDB)); } catch (e) {}
-}
-
-function syncCurrentUserToDB() {
-  if (!profile || !profile.uid) return;
-  if (!usersDB[profile.uid]) {
-    usersDB[profile.uid] = {
-      uid: profile.uid,
-      name: profile.name,
-      avatar: profile.avatar,
-      coins: profile.coins,
-      friends: [],
-      friendRequests: [],
-      sentRequests: []
-    };
-  } else {
-    usersDB[profile.uid].name = profile.name;
-    usersDB[profile.uid].avatar = profile.avatar;
-    usersDB[profile.uid].coins = profile.coins;
-    if (!Array.isArray(usersDB[profile.uid].friends)) usersDB[profile.uid].friends = [];
-    if (!Array.isArray(usersDB[profile.uid].friendRequests)) usersDB[profile.uid].friendRequests = [];
-    if (!Array.isArray(usersDB[profile.uid].sentRequests)) usersDB[profile.uid].sentRequests = [];
-  }
-  profile.friends = usersDB[profile.uid].friends.slice();
-  profile.friendRequests = usersDB[profile.uid].friendRequests.slice();
-  profile.sentRequests = usersDB[profile.uid].sentRequests.slice();
-  saveProfile();
-  saveUsersDB();
-}
-
-function seedMockUsers() {
-  let changed = false;
-  MOCK_USERS.forEach(u => {
-    if (!usersDB[u.uid]) {
-      usersDB[u.uid] = {
-        uid: u.uid, name: u.name, avatar: u.avatar, coins: 5000,
-        friends: [], friendRequests: [], sentRequests: [],
-        isMock: true
-      };
-      changed = true;
-    }
-  });
-  if (changed) saveUsersDB();
-}
-
 function updateFriendsBadge() {
-  if (!profile || !profile.uid) return;
-  const count = (profile.friendRequests || []).length;
+  const count = (serverFriends.incoming || []).length;
   const badge = document.getElementById('fr-req-badge');
   const mfpBadge = document.getElementById('mfp-badge');
   if (badge) {
@@ -1852,9 +1834,27 @@ function updateFriendsBadge() {
   }
 }
 
+function refreshFriendsFromServer() {
+  if (!profile || !profile.uid) return;
+  fetch('/api/friend/list')
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        serverFriends = {
+          friends: data.friends || [],
+          incoming: data.incoming || [],
+          outgoing: data.outgoing || []
+        };
+        updateFriendsBadge();
+        renderFriendsScreen();
+        updateProfileMenuCounts();
+      }
+    })
+    .catch(() => {});
+}
+
 function openFriendsScreen() {
   getAudioCtx();
-  syncCurrentUserToDB();
   document.getElementById('mode-screen').classList.add('hidden');
   document.getElementById('friends-screen').classList.remove('hidden');
   friendsActiveTab = 'list';
@@ -1863,6 +1863,7 @@ function openFriendsScreen() {
   if (inp) inp.value = '';
   updateFriendsTabsUI();
   renderFriendsScreen();
+  refreshFriendsFromServer();
 }
 function closeFriendsScreen() {
   document.getElementById('friends-screen').classList.add('hidden');
@@ -1870,8 +1871,7 @@ function closeFriendsScreen() {
   updateFriendsBadge();
 }
 function refreshFriendsScreen() {
-  syncCurrentUserToDB();
-  renderFriendsScreen();
+  refreshFriendsFromServer();
   showToast('🔄 রিফ্রেশ হয়েছে');
 }
 function switchFriendsTab(tab) {
@@ -1906,6 +1906,7 @@ function renderFriendsScreen() {
   }
   updateFriendsBadge();
 }
+
 function doFriendSearch() {
   const input = document.getElementById('fr-search-input');
   if (!input) return;
@@ -1913,41 +1914,33 @@ function doFriendSearch() {
   const q = (input.value || '').trim().toUpperCase();
   if (!q) { showToast('⚠️ ইউজার আইডি লিখুন'); return; }
 
-  syncCurrentUserToDB();
-
-  let found = usersDB[q] || null;
-
-  if (!found && !q.startsWith('LK-')) {
-    found = usersDB['LK-' + q] || null;
-  }
-
-  if (!found) {
-    const byName = Object.values(usersDB).find(
-      u => (u.name || '').toUpperCase() === q
-    );
-    if (byName) found = byName;
-  }
-
-  if (!found) {
-    const key = Object.keys(usersDB).find(k => k.toUpperCase() === q);
-    if (key) found = usersDB[key];
-  }
-
-  if (found) {
-    frSearchResult = { found: true, user: found };
-  } else {
+  fetch('/api/friend/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uid: q })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      frSearchResult = { found: true, user: data.user };
+    } else {
+      frSearchResult = { found: false, query: q };
+    }
+    renderFriendsScreen();
+    vibrate(15);
+  })
+  .catch(() => {
     frSearchResult = { found: false, query: q };
-  }
-
-  renderFriendsScreen();
-  vibrate(15);
+    renderFriendsScreen();
+    showToast('সার্ভার সমস্যা');
+  });
 }
 
 function buildSearchResultCard(res) {
   const card = document.createElement('div');
   if (!res.found) {
     card.className = 'fr-result-card not-found';
-    card.innerHTML = `❌ ইউজার পাওয়া যায়নি<br><b style="color:#ffde00;font-family:'Courier New',monospace;letter-spacing:1px;">${escapeHtml(res.query)}</b><br><span style="font-size:10.5px;opacity:0.8;">আইডি সঠিকভাবে লিখুন বা বানান চেক করুন</span>`;
+    card.innerHTML = `❌ ইউজার পাওয়া যায়নি<br><b style="color:#ffde00;font-family:'Courier New',monospace;letter-spacing:1.5px;font-size:15px;display:inline-block;margin:6px 0 4px;">${escapeHtml(res.query)}</b><br><span style="font-size:10.5px;opacity:0.75;">আইডি সঠিকভাবে লিখুন বা বানান চেক করুন</span>`;
     return card;
   }
   const u = res.user;
@@ -1963,11 +1956,10 @@ function buildSearchResultCard(res) {
   info.className = 'fr-result-info';
 
   let statusHtml = '';
-  const myData = usersDB[profile.uid];
   const isSelf = u.uid === profile.uid;
-  const isFriend = myData.friends.includes(u.uid);
-  const isSent = myData.sentRequests.includes(u.uid);
-  const isReceived = myData.friendRequests.includes(u.uid);
+  const isFriend = (serverFriends.friends || []).some(x => x.uid === u.uid);
+  const isSent = (serverFriends.outgoing || []).some(x => x.uid === u.uid);
+  const isReceived = (serverFriends.incoming || []).some(x => x.uid === u.uid);
 
   if (isSelf) {
     statusHtml = '<div class="fr-result-status me">✨ এটা আপনার নিজের আইডি</div>';
@@ -2030,10 +2022,8 @@ function buildSearchResultCard(res) {
 }
 
 function renderFriendList(container) {
-  syncCurrentUserToDB();
-  const me = usersDB[profile.uid];
-  const friendIds = me.friends || [];
-  if (friendIds.length === 0) {
+  const list = serverFriends.friends || [];
+  if (list.length === 0) {
     container.innerHTML = `
       <div class="fr-empty">
         <span class="fr-empty-ico">👥</span>
@@ -2043,43 +2033,29 @@ function renderFriendList(container) {
     `;
     return;
   }
-  friendIds.forEach(uid => {
-    const u = usersDB[uid];
-    if (!u) return;
-    container.appendChild(buildUserCard(u, 'friend'));
-  });
+  list.forEach(u => container.appendChild(buildUserCard(u, 'friend')));
 }
 
 function renderRequestsList(container) {
-  syncCurrentUserToDB();
-  const me = usersDB[profile.uid];
-  const reqIds = me.friendRequests || [];
-  const sentIds = me.sentRequests || [];
+  const incoming = serverFriends.incoming || [];
+  const outgoing = serverFriends.outgoing || [];
   let hasAny = false;
 
-  if (reqIds.length > 0) {
+  if (incoming.length > 0) {
     hasAny = true;
     const title = document.createElement('div');
     title.style.cssText = 'font-size:10px;color:#8bb4f0;font-weight:900;letter-spacing:2px;margin:4px 0;text-transform:uppercase;font-family:Arial,sans-serif;';
-    title.innerText = `📬 আগত রিকোয়েস্ট (${reqIds.length})`;
+    title.innerText = `📬 আগত রিকোয়েস্ট (${incoming.length})`;
     container.appendChild(title);
-    reqIds.forEach(uid => {
-      const u = usersDB[uid];
-      if (!u) return;
-      container.appendChild(buildUserCard(u, 'request'));
-    });
+    incoming.forEach(u => container.appendChild(buildUserCard(u, 'request')));
   }
-  if (sentIds.length > 0) {
+  if (outgoing.length > 0) {
     hasAny = true;
     const title = document.createElement('div');
     title.style.cssText = 'font-size:10px;color:#8bb4f0;font-weight:900;letter-spacing:2px;margin:14px 0 4px;text-transform:uppercase;font-family:Arial,sans-serif;';
-    title.innerText = `⏳ পাঠানো রিকোয়েস্ট (${sentIds.length})`;
+    title.innerText = `⏳ পাঠানো রিকোয়েস্ট (${outgoing.length})`;
     container.appendChild(title);
-    sentIds.forEach(uid => {
-      const u = usersDB[uid];
-      if (!u) return;
-      container.appendChild(buildUserCard(u, 'sent'));
-    });
+    outgoing.forEach(u => container.appendChild(buildUserCard(u, 'sent')));
   }
   if (!hasAny) {
     container.innerHTML = `
@@ -2141,208 +2117,98 @@ function buildUserCard(u, type) {
 }
 
 function sendFriendRequest(targetUid) {
-  syncCurrentUserToDB();
   if (!targetUid || targetUid === profile.uid) return;
-  if (!usersDB[targetUid]) { showToast('❌ ইউজার পাওয়া যায়নি'); return; }
 
-  const me = usersDB[profile.uid];
-  const other = usersDB[targetUid];
-
-  if (me.friends.includes(targetUid)) { showToast('আপনি ইতিমধ্যে বন্ধু'); return; }
-  if (me.sentRequests.includes(targetUid)) { showToast('⏳ রিকোয়েস্ট আগেই পাঠানো হয়েছে'); return; }
-
-  if (me.friendRequests.includes(targetUid)) {
-    acceptFriendRequest(targetUid);
-    return;
-  }
-
-  me.sentRequests.push(targetUid);
-  if (!other.friendRequests.includes(profile.uid)) {
-    other.friendRequests.push(profile.uid);
-  }
-  saveUsersDB();
-  syncCurrentUserToDB();
-  vibrate([30, 15, 30]);
-  showToast(`✅ ${other.name}-কে ফ্রেন্ড রিকোয়েস্ট পাঠানো হয়েছে`);
-
-  if (other.isMock) {
-    setTimeout(() => {
-      simulateMockAccept(profile.uid, targetUid);
-    }, 5000 + Math.random() * 4000);
-  }
-
-  if (frSearchResult && frSearchResult.found && frSearchResult.user && frSearchResult.user.uid === targetUid) {
-    frSearchResult.user = usersDB[targetUid];
-  }
-  renderFriendsScreen();
+  fetch('/api/friend/request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target_uid: targetUid })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data.success) {
+      showToast(data.message || 'রিকোয়েস্ট পাঠানো যায়নি');
+      return;
+    }
+    if (data.status === 'became_friends') showToast('🎉 দুইজন এখন বন্ধু!');
+    else if (data.status === 'already_friends') showToast('ইতিমধ্যে বন্ধু');
+    else showToast('✅ রিকোয়েস্ট পাঠানো হয়েছে');
+    vibrate([30, 15, 30]);
+    refreshFriendsFromServer();
+    if (frSearchResult && frSearchResult.found) {
+      setTimeout(doFriendSearch, 400);
+    }
+  })
+  .catch(() => showToast('সার্ভার সমস্যা'));
 }
 
 function acceptFriendRequest(fromUid) {
-  syncCurrentUserToDB();
-  if (!usersDB[fromUid] || !usersDB[profile.uid]) return;
-  const me = usersDB[profile.uid];
-  const other = usersDB[fromUid];
-
-  me.friendRequests = me.friendRequests.filter(id => id !== fromUid);
-  other.sentRequests = other.sentRequests.filter(id => id !== profile.uid);
-  if (!me.friends.includes(fromUid)) me.friends.push(fromUid);
-  if (!other.friends.includes(profile.uid)) other.friends.push(profile.uid);
-
-  saveUsersDB();
-  syncCurrentUserToDB();
-  vibrate([40, 25, 40]);
-  showToast(`🎉 ${other.name} এখন আপনার বন্ধু!`);
-  renderFriendsScreen();
+  fetch('/api/friend/accept', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from_uid: fromUid })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      showToast('🎉 এখন আপনি বন্ধু!');
+      vibrate([40, 25, 40]);
+      refreshFriendsFromServer();
+      if (frSearchResult && frSearchResult.found) setTimeout(doFriendSearch, 400);
+    } else {
+      showToast(data.message || 'গ্রহণ করা যায়নি');
+    }
+  })
+  .catch(() => showToast('সার্ভার সমস্যা'));
 }
 
 function rejectFriendRequest(fromUid) {
-  syncCurrentUserToDB();
-  if (!usersDB[fromUid] || !usersDB[profile.uid]) return;
-  const me = usersDB[profile.uid];
-  const other = usersDB[fromUid];
-  me.friendRequests = me.friendRequests.filter(id => id !== fromUid);
-  other.sentRequests = other.sentRequests.filter(id => id !== profile.uid);
-  saveUsersDB();
-  syncCurrentUserToDB();
-  vibrate(15);
-  showToast('❌ রিকোয়েস্ট বাতিল করা হয়েছে');
-  renderFriendsScreen();
-}
-
-function simulateMockAccept(myUid, mockUid) {
-  if (!usersDB[mockUid] || !usersDB[myUid]) return;
-  const me = usersDB[myUid];
-  const other = usersDB[mockUid];
-  if (!me.sentRequests.includes(mockUid)) return;
-  me.sentRequests = me.sentRequests.filter(id => id !== mockUid);
-  if (!me.friends.includes(mockUid)) me.friends.push(mockUid);
-  other.friendRequests = other.friendRequests.filter(id => id !== myUid);
-  if (!other.friends.includes(myUid)) other.friends.push(myUid);
-  saveUsersDB();
-  syncCurrentUserToDB();
-  showToast(`🎉 ${other.name} আপনার রিকোয়েস্ট গ্রহণ করেছেন!`);
-  vibrate([40, 25, 40]);
-  renderFriendsScreen();
-}
-
-function maybeSendDemoRequests() {
-  try {
-    if (localStorage.getItem(DEMO_FRIEND_REQ_KEY) === '1') return;
-  } catch (e) {}
-  if (!profile || !profile.uid) return;
-  syncCurrentUserToDB();
-  const me = usersDB[profile.uid];
-  const senders = ['LK-RAHIM001', 'LK-KARIM002', 'LK-MITU0006'];
-  senders.forEach(uid => {
-    const other = usersDB[uid];
-    if (!other) return;
-    if (!me.friendRequests.includes(uid)) me.friendRequests.push(uid);
-    if (!other.sentRequests.includes(profile.uid)) other.sentRequests.push(profile.uid);
-  });
-  saveUsersDB();
-  syncCurrentUserToDB();
-  try { localStorage.setItem(DEMO_FRIEND_REQ_KEY, '1'); } catch (e) {}
-  setTimeout(() => {
-    const c = (profile.friendRequests || []).length;
-    if (c > 0) showToast(`📬 ${c}টি নতুন ফ্রেন্ড রিকোয়েস্ট এসেছে!`);
-    updateFriendsBadge();
-  }, 2000);
+  fetch('/api/friend/reject', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from_uid: fromUid })
+  })
+  .then(r => r.json())
+  .then(() => {
+    showToast('❌ রিকোয়েস্ট বাতিল করা হয়েছে');
+    refreshFriendsFromServer();
+  })
+  .catch(() => showToast('সার্ভার সমস্যা'));
 }
 
 /* ============================================================
-   ==================  INBOX / CHAT SYSTEM  ==================
+   ==================  INBOX / CHAT (SERVER)  ================
    ============================================================ */
-const CONVERSATIONS_DB_KEY = 'ludoking_conversations_v1';
-let conversationsDB = {};
-let currentChatUserId = null;
-
-function loadConversationsDB() {
-  try {
-    const raw = localStorage.getItem(CONVERSATIONS_DB_KEY);
-    if (raw) conversationsDB = JSON.parse(raw) || {};
-  } catch (e) { conversationsDB = {}; }
-  if (typeof conversationsDB !== 'object' || conversationsDB === null) conversationsDB = {};
-}
-function saveConversationsDB() {
-  try { localStorage.setItem(CONVERSATIONS_DB_KEY, JSON.stringify(conversationsDB)); } catch (e) {}
-}
-
-function getConversationId(uid1, uid2) {
-  return [uid1, uid2].sort().join('__');
-}
-
-function getOrCreateConversation(uid1, uid2) {
-  const convId = getConversationId(uid1, uid2);
-  if (!conversationsDB[convId]) {
-    conversationsDB[convId] = {
-      conv_id: convId,
-      participants: [uid1, uid2].sort(),
-      messages: [],
-      last_updated: Date.now()
-    };
-    saveConversationsDB();
-  }
-  return conversationsDB[convId];
-}
-
-function getConversation(uid1, uid2) {
-  const convId = getConversationId(uid1, uid2);
-  return conversationsDB[convId] || null;
-}
-
-function getTotalConversationCount() {
-  if (!profile || !profile.uid) return 0;
-  return Object.values(conversationsDB).filter(c =>
-    c.participants.includes(profile.uid) && c.messages.length > 0
-  ).length;
-}
-
-function getTotalUnreadCount() {
-  if (!profile || !profile.uid) return 0;
-  let total = 0;
-  Object.values(conversationsDB).forEach(c => {
-    if (!c.participants.includes(profile.uid)) return;
-    c.messages.forEach(m => {
-      if (m.sender_id !== profile.uid && !m.read) total++;
-    });
-  });
-  return total;
-}
-
 function updateInboxBadge() {
-  const count = getTotalUnreadCount();
+  let total = 0;
+  inboxConversations.forEach(c => total += (c.unread || 0));
   const badge = document.getElementById('mip-badge');
   if (badge) {
-    badge.style.display = count > 0 ? 'inline-block' : 'none';
-    badge.innerText = count;
+    badge.style.display = total > 0 ? 'inline-block' : 'none';
+    badge.innerText = total;
   }
   updateProfileMenuCounts();
 }
 
-function markConversationRead(uid1, uid2) {
-  const conv = getConversation(uid1, uid2);
-  if (!conv) return;
-  let changed = false;
-  conv.messages.forEach(m => {
-    if (m.sender_id !== profile.uid && !m.read) {
-      m.read = true;
-      changed = true;
-    }
-  });
-  if (changed) {
-    saveConversationsDB();
-    updateInboxBadge();
-  }
+function refreshInboxFromServer() {
+  fetch('/api/messages/inbox')
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        inboxConversations = data.conversations || [];
+        renderInboxList();
+        updateInboxBadge();
+      }
+    })
+    .catch(() => {});
 }
 
 function openInboxScreen() {
   getAudioCtx();
-  syncCurrentUserToDB();
   document.getElementById('mode-screen').classList.add('hidden');
   document.getElementById('inbox-screen').classList.remove('hidden');
   document.getElementById('friends-screen').classList.add('hidden');
-  renderInboxList();
-  updateInboxBadge();
+  refreshInboxFromServer();
 }
 function closeInboxScreen() {
   document.getElementById('inbox-screen').classList.add('hidden');
@@ -2350,60 +2216,39 @@ function closeInboxScreen() {
   updateInboxBadge();
 }
 function refreshInboxScreen() {
-  renderInboxList();
-  updateInboxBadge();
+  refreshInboxFromServer();
   showToast('🔄 রিফ্রেশ হয়েছে');
 }
 
 function renderInboxList() {
   const list = document.getElementById('inbox-list');
   list.innerHTML = '';
-  if (!profile || !profile.uid) return;
-
-  const myConvs = Object.values(conversationsDB).filter(c =>
-    c.participants.includes(profile.uid) && c.messages.length > 0
-  );
-  myConvs.sort((a, b) => b.last_updated - a.last_updated);
-
-  if (myConvs.length === 0) {
+  if (inboxConversations.length === 0) {
     list.innerHTML = `
       <div class="fr-empty" style="margin-top:40px;">
         <span class="fr-empty-ico">💬</span>
         এখনও কোনো চ্যাট নেই।<br>
-        বন্ধু তালিকা বা গ্লোবাল রুম থেকে<br>
-        <b style="color:#ffde00;">💬 Message</b> বাটনে ক্লিক করুন!
-      </div>
-    `;
+        বন্ধু তালিকা থেকে <b style="color:#ffde00;">💬 Message</b> চাপুন!
+      </div>`;
     return;
   }
-
-  myConvs.forEach(conv => {
-    const otherUid = conv.participants.find(u => u !== profile.uid);
-    if (!otherUid) return;
-    const other = usersDB[otherUid] || { name: 'Unknown', avatar: '👤', uid: otherUid };
-    const lastMsg = conv.messages[conv.messages.length - 1];
-    if (!lastMsg) return;
-
-    const unreadCount = conv.messages.filter(m => m.sender_id !== profile.uid && !m.read).length;
-
+  inboxConversations.forEach(conv => {
+    const u = conv.user;
+    const unread = conv.unread || 0;
     const item = document.createElement('div');
-    item.className = 'conv-item' + (unreadCount > 0 ? ' unread' : '');
-    item.onclick = () => openChatWith(otherUid, other.name, other.avatar);
-
-    const previewText = lastMsg.sender_id === profile.uid
-      ? 'আপনি: ' + lastMsg.text
-      : lastMsg.text;
-
+    item.className = 'conv-item' + (unread > 0 ? ' unread' : '');
+    item.onclick = () => openChatWith(u.uid, u.name, u.avatar);
+    const preview = conv.last_from === profile.uid ? 'আপনি: ' + conv.last_message : conv.last_message;
     item.innerHTML = `
-      <div class="conv-avatar">${other.avatar}</div>
+      <div class="conv-avatar">${u.avatar}</div>
       <div class="conv-info">
         <div class="conv-name-row">
-          <div class="conv-name">${escapeHtml(other.name)}</div>
-          <div class="conv-time">${formatMsgTime(lastMsg.timestamp)}</div>
+          <div class="conv-name">${escapeHtml(u.name)}</div>
+          <div class="conv-time">${formatMsgTime(conv.timestamp)}</div>
         </div>
-        <div class="conv-preview">${escapeHtml(previewText)}</div>
+        <div class="conv-preview">${escapeHtml(preview)}</div>
       </div>
-      ${unreadCount > 0 ? '<div class="conv-unread-dot"></div>' : ''}
+      ${unread > 0 ? '<div class="conv-unread-dot"></div>' : ''}
     `;
     list.appendChild(item);
   });
@@ -2415,9 +2260,6 @@ function openChatWith(uid, name, avatar) {
     return;
   }
   getAudioCtx();
-  syncCurrentUserToDB();
-  ensureOtherUserExists(uid, name, avatar);
-  getOrCreateConversation(profile.uid, uid);
   currentChatUserId = uid;
 
   document.getElementById('mode-screen').classList.add('hidden');
@@ -2429,56 +2271,41 @@ function openChatWith(uid, name, avatar) {
   document.getElementById('chat-header-avatar').innerText = avatar || '👤';
   document.getElementById('chat-header-name').innerText = name || 'User';
 
-  markConversationRead(profile.uid, uid);
-
-  renderChatMessages();
-  updateInboxBadge();
-
+  loadChatMessages();
   setTimeout(() => {
     const inp = document.getElementById('chat-input');
     if (inp) inp.focus();
   }, 300);
 }
 
-function ensureOtherUserExists(uid, name, avatar) {
-  if (!usersDB[uid]) {
-    usersDB[uid] = {
-      uid: uid, name: name || 'Unknown', avatar: avatar || '👤',
-      coins: 0, friends: [], friendRequests: [], sentRequests: []
-    };
-    saveUsersDB();
-  }
-}
-
-function closeChatScreen() {
-  document.getElementById('chat-screen').classList.add('hidden');
-  currentChatUserId = null;
-  document.getElementById('inbox-screen').classList.remove('hidden');
-  renderInboxList();
-  updateInboxBadge();
-}
-
-function onChatHeaderClick() {
+function loadChatMessages() {
   if (!currentChatUserId) return;
-  const u = usersDB[currentChatUserId];
-  if (u) openProfileAction(u.uid, u.name, u.avatar);
+  fetch('/api/messages/list', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ with_uid: currentChatUserId })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data.success) return;
+    renderChatMessages(data.messages || []);
+    refreshInboxFromServer();
+  })
+  .catch(() => {});
 }
 
-function renderChatMessages() {
-  if (!currentChatUserId) return;
+function renderChatMessages(messages) {
   const body = document.getElementById('chat-body');
-  const conv = getConversation(profile.uid, currentChatUserId);
   body.innerHTML = '';
-  if (!conv || conv.messages.length === 0) {
+  if (!messages || messages.length === 0) {
     const empty = document.createElement('div');
-    empty.style.cssText = 'text-align:center;padding:40px 20px;color:#8bb4f0;font-family:Arial,sans-serif;font-size:12px;font-weight:bold;line-height:1.7;letter-spacing:0.3px;';
+    empty.style.cssText = 'text-align:center;padding:40px 20px;color:#8bb4f0;font-family:Arial,sans-serif;font-size:12px;font-weight:bold;line-height:1.7;';
     empty.innerHTML = `💬<br>এখনও কোনো মেসেজ নেই।<br>প্রথম মেসেজটি পাঠান!`;
     body.appendChild(empty);
     return;
   }
-
   let lastDay = '';
-  conv.messages.forEach(msg => {
+  messages.forEach(msg => {
     const d = new Date(msg.timestamp);
     const dayKey = d.toDateString();
     if (dayKey !== lastDay) {
@@ -2492,21 +2319,16 @@ function renderChatMessages() {
       else sep.innerText = d.getDate() + '/' + (d.getMonth() + 1) + '/' + d.getFullYear();
       body.appendChild(sep);
     }
-
     const row = document.createElement('div');
-    row.className = 'chat-msg-row ' + (msg.sender_id === profile.uid ? 'me' : 'other');
+    row.className = 'chat-msg-row ' + (msg.from === profile.uid ? 'me' : 'other');
     row.innerHTML = `
       <div class="chat-msg-bubble">
         <div>${escapeHtml(msg.text)}</div>
         <div class="chat-msg-time">${formatMsgTime(msg.timestamp)}</div>
-      </div>
-    `;
+      </div>`;
     body.appendChild(row);
   });
-
-  setTimeout(() => {
-    body.scrollTop = body.scrollHeight;
-  }, 60);
+  setTimeout(() => { body.scrollTop = body.scrollHeight; }, 60);
 }
 
 function sendChatMessage() {
@@ -2514,111 +2336,34 @@ function sendChatMessage() {
   const inp = document.getElementById('chat-input');
   const text = (inp.value || '').trim();
   if (!text) return;
-  if (text.length > 500) { showToast('⚠️ মেসেজ অনেক বড়'); return; }
 
-  const conv = getOrCreateConversation(profile.uid, currentChatUserId);
-  const msgObj = {
-    id: 'msg_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
-    sender_id: profile.uid,
-    text: text,
-    timestamp: Date.now(),
-    read: false
-  };
-  conv.messages.push(msgObj);
-  conv.last_updated = Date.now();
-  saveConversationsDB();
-
-  inp.value = '';
-  vibrate(15);
-  renderChatMessages();
-  updateInboxBadge();
-
-  const other = usersDB[currentChatUserId];
-  if (other && other.isMock) {
-    simulateMockReply(profile.uid, currentChatUserId);
-  }
+  fetch('/api/messages/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ to_uid: currentChatUserId, text })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      inp.value = '';
+      vibrate(15);
+      loadChatMessages();
+    }
+  })
+  .catch(() => showToast('মেসেজ পাঠানো যায়নি'));
 }
 
-function simulateMockReply(myUid, mockUid) {
-  const other = usersDB[mockUid];
-  if (!other) return;
+function closeChatScreen() {
+  document.getElementById('chat-screen').classList.add('hidden');
+  currentChatUserId = null;
+  document.getElementById('inbox-screen').classList.remove('hidden');
+  refreshInboxFromServer();
+}
 
-  const delay = 1500 + Math.random() * 2000;
-
-  setTimeout(() => {
-    const body = document.getElementById('chat-body');
-    if (!body || currentChatUserId !== mockUid) return;
-    let typingEl = document.getElementById('chat-typing-indicator');
-    if (!typingEl) {
-      typingEl = document.createElement('div');
-      typingEl.id = 'chat-typing-indicator';
-      typingEl.className = 'chat-typing';
-      typingEl.innerHTML = '<span></span><span></span><span></span>';
-      body.appendChild(typingEl);
-      body.scrollTop = body.scrollHeight;
-    }
-  }, Math.max(400, delay - 900));
-
-  setTimeout(() => {
-    const typingEl = document.getElementById('chat-typing-indicator');
-    if (typingEl) typingEl.remove();
-
-    const replies = [
-      'হ্যালো! কেমন আছো?',
-      'চলো একটা ম্যাচ খেলি!',
-      'দারুণ খেলছো তুমি!',
-      'আজ কেমন আছেন?',
-      'আমি এখন ব্যস্ত, পরে কথা বলি।',
-      'কয়েন কত হলো তোমার?',
-      'একটা ম্যাচ খেলবি?',
-      'ঠিক আছে, দেখা হবে!',
-      '😀😀😀',
-      'Ludo King-এ ইনবক্স চ্যাট দারুণ কাজ করছে!',
-      'হ্যাঁ, আমি এখানেই আছি!',
-      'তোমার প্রোফাইলটা সুন্দর!'
-    ];
-    const text = replies[Math.floor(Math.random() * replies.length)];
-
-    const conv = getConversation(myUid, mockUid);
-    if (!conv) return;
-
-    const msgObj = {
-      id: 'msg_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
-      sender_id: mockUid,
-      text: text,
-      timestamp: Date.now(),
-      read: (currentChatUserId === mockUid)
-    };
-    conv.messages.push(msgObj);
-    conv.last_updated = Date.now();
-    saveConversationsDB();
-
-    if (soundEnabled) {
-      try {
-        const ctx = getAudioCtx();
-        if (ctx) {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(880, ctx.currentTime);
-          osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.15);
-          gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.01);
-          gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
-          osc.connect(gain); gain.connect(ctx.destination);
-          osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.23);
-        }
-      } catch (e) {}
-    }
-
-    if (currentChatUserId === mockUid) {
-      markConversationRead(myUid, mockUid);
-      renderChatMessages();
-    } else {
-      showToast(`💬 ${other.name}: ${text.slice(0, 40)}${text.length > 40 ? '...' : ''}`);
-    }
-    updateInboxBadge();
-  }, delay);
+function onChatHeaderClick() {
+  if (!currentChatUserId) return;
+  const u = (serverFriends.friends || []).find(x => x.uid === currentChatUserId);
+  if (u) openProfileAction(u.uid, u.name, u.avatar);
 }
 
 document.addEventListener('keydown', (e) => {
@@ -2631,47 +2376,34 @@ document.addEventListener('keydown', (e) => {
 window.openInboxScreen = openInboxScreen;
 window.openChatWith = openChatWith;
 
-/* ================= LOAD ================= */
-window.addEventListener('load', () => {
+/* ============================================================
+   ====================== PAGE LOAD ==========================
+   ============================================================ */
+window.addEventListener('load', async () => {
   loadSettings();
   loadProfile();
-  loadUsersDB();
-  seedMockUsers();
-  syncCurrentUserToDB();
-  loadConversationsDB();
   applyTheme(profile.theme);
   renderProfileUI();
   updateSettingsUI();
-  updateFriendsBadge();
-  updateInboxBadge();
   initBoard();
 
   setTimeout(() => {
-    document.getElementById('splash').classList.add('hidden');
-    document.getElementById('mode-screen').classList.remove('hidden');
+    const sp = document.getElementById('splash');
+    if (sp) sp.classList.add('hidden');
+    const ms = document.getElementById('mode-screen');
+    if (ms) ms.classList.remove('hidden');
   }, 2300);
 
-  setTimeout(maybeSendDemoRequests, 5000);
-
-  setTimeout(() => {
-    if (usersDB['LK-RAHIM001']) {
-      const conv = getConversation(profile.uid, 'LK-RAHIM001');
-      if (!conv || conv.messages.length === 0) {
-        const c = getOrCreateConversation(profile.uid, 'LK-RAHIM001');
-        c.messages.push({
-          id: 'msg_demo_' + Date.now(),
-          sender_id: 'LK-RAHIM001',
-          text: 'হ্যালো! কেমন আছো? একটা ম্যাচ খেলবি?',
-          timestamp: Date.now(),
-          read: false
-        });
-        c.last_updated = Date.now();
-        saveConversationsDB();
-        updateInboxBadge();
-        showToast('💬 Rahim আপনাকে একটা মেসেজ পাঠিয়েছে!');
+  const user = await LudoAuth.fetchServerUser();
+  if (user) {
+    refreshFriendsFromServer();
+    refreshInboxFromServer();
+    // হালকা polling — প্রতি 15 সেকেন্ডে নতুন মেসেজ/রিকোয়েস্ট চেক
+    setInterval(() => {
+      if (profile.loggedIn) {
+        refreshInboxFromServer();
+        refreshFriendsFromServer();
       }
-    }
-  }, 9000);
-
-  if (LudoAuth.currentUser) LudoAuth.setUser(LudoAuth.currentUser);
+    }, 15000);
+  }
 });
