@@ -32,7 +32,6 @@ def generate_unique_uid(cursor):
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,7 +45,6 @@ def init_db():
             created_at INTEGER
         )
     ''')
-
     for ddl in [
         "ALTER TABLE users ADD COLUMN uid TEXT",
         "ALTER TABLE users ADD COLUMN name TEXT",
@@ -85,7 +83,6 @@ def init_db():
             created_at INTEGER
         )
     ''')
-
     conn.commit()
     conn.close()
 
@@ -124,23 +121,23 @@ def user_to_dict(u):
 # ============================================================
 @app.route('/')
 def home():
-    """রুট URL — লগইন থাকলে /ludo, নাহলে /login"""
+    """ড্যাশবোর্ড — লগইন না থাকলে লগইন পেজে পাঠায়"""
     if not session.get('user_phone'):
         return redirect(url_for('login_page'))
-    return redirect(url_for('ludo_game'))
+    return render_template('index.html')
 
 
 @app.route('/login')
 def login_page():
-    """লগইন পেজ — ইতিমধ্যে লগইন থাকলে /ludo তে পাঠায়"""
+    """লগইন পেজ — লগইন থাকলে ড্যাশবোর্ডে পাঠায়"""
     if session.get('user_phone'):
-        return redirect(url_for('ludo_game'))
+        return redirect(url_for('home'))
     return render_template('login.html')
 
 
 @app.route('/ludo')
 def ludo_game():
-    """লুডো গেম — লগইন না থাকলে /login এ পাঠায়"""
+    """লুডো গেম — লগইন না থাকলে লগইন পেজে পাঠায়"""
     if not session.get('user_phone'):
         return redirect(url_for('login_page'))
     return render_template('ludo.html')
