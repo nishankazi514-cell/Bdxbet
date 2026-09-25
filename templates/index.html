@@ -545,6 +545,28 @@ function tickTimer() {
     m.addEventListener('click', e => { if (e.target === m) m.classList.remove('active'); });
   });
 })();
+
+
+  // Fallback: force-hide splash after 3s no matter what
+  setTimeout(function() {
+    var sp = document.getElementById('splash');
+    var ms = document.getElementById('mode-screen');
+    if (sp && !sp.classList.contains('hidden')) {
+      sp.classList.add('hidden');
+      console.log('[FALLBACK] Splash force-hidden');
+    }
+    if (ms) ms.classList.remove('hidden');
+  }, 3000);
+
+  // Global error reporter
+  window.addEventListener('error', function(e) {
+    console.error('❌ JS ERROR:', e.message, 'at', e.filename, ':', e.lineno);
+    var sp = document.getElementById('splash');
+    if (sp) sp.classList.add('hidden');
+    var ms = document.getElementById('mode-screen');
+    if (ms) ms.classList.remove('hidden');
+  });
 </script>
+  
 </body>
 </html>
