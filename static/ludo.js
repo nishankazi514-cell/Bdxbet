@@ -1,10 +1,801 @@
-(Math.random() * chars.length)];
+/* ============================================================
+   LUDO KING — COMPLETE script.js (100% WORKING)
+   Server-backed Friends + Chat + Game Logic
+   ============================================================ */
+
+/* ============================================================
+   ============ CONSTANTS & PROFILE ===========================
+   ============================================================ */
+const STORAGE_KEY = 'ludoking_profile_v1';
+const SETTINGS_KEY = 'ludoking_settings_v1';
+
+const THEMES = [
+  { id: 'classic',  name: 'ক্লাসিক ব্লু',    c1: '#142c52', c2: '#050a14', accent: '#ffcc00' },
+  { id: 'royal',    name: 'রয়্যাল পার্পল',  c1: '#3b1d63', c2: '#0a0414', accent: '#c792ff' },
+  { id: 'emerald',  name: 'এমারল্ড নাইট',   c1: '#0b3d2e', c2: '#02100a', accent: '#4ce0a8' },
+  { id: 'crimson',  name: 'ক্রিমসন রেড',    c1: '#4a0f18', c2: '#100204', accent: '#ff6b6b' },
+  { id: 'sunset',   name: 'সানসেট অরেঞ্জ',  c1: '#5a2a00', c2: '#140600', accent: '#ffab40' },
+  { id: 'midnight', name: 'মিডনাইট ব্ল্যাক', c1: '#22222a', c2: '#000000', accent: '#e0e0e0' }
+];
+
+const AVATARS = [
+  '👨‍💼', '👩‍💼', '🏎️', '👑', '🐯', '🦊', '🐼', '🦁',
+  '🐸', '🤖', '👽', '🐲', '🦅', '🐺', '🎩', '😎'
+];
+
+let profile = null;
+let gameSettings = { sound: true, vibration: true, speed: 'normal', highlight: true };
+
+const SYSTEM_FEE_RATE = 0.10;
+const MIN_BET = 5;
+const ROOM_EXPIRE_MS = 600000;
+const CANCEL_PENALTY_RATE = 0.30;
+
+let pendingGameMode = null;
+let pendingBetAmount = 0;
+let currentBetInfo = null;
+let currentRoom = null;
+let gameActive = false;
+let amQuitter = false;
+
+let serverFriends = { friends: [], incoming: [], outgoing: [] };
+let inboxConversations = [];
+let currentChatUserId = null;
+let frSearchResult = null;
+let friendsActiveTab = 'list';
+
+/* ============================================================
+   ============ UTILITIES =====================================
+   ============================================================ */
+function generateUID() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i = 0; i < 8; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return 'LK-' + s;
+}
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+function formatCoins(n) { return Number(n || 0).toLocaleString('en-US'); }
+function formatTimeLeft(ms) {
+  const secs = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return m + ':' + String(s).padStart(2, '0');
+}
+function formatMsgTime(ts) {
+  const d = new Date(ts);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  if (isToday) return hh + ':' + mm;
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  return dd + '/' + mo + ' ' + hh + ':' + mm;
+}
+function showToast(msg) {
+  const el = document.getElementById('lk-toast');
+  if (!el) return;
+  el.innerText = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(function(){ el.classList.remove('show'); }, 2400);
+}
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+  });
+}
+
+/* ============================================================
+   ============ PROFILE LOAD/SAVE =============================
+   ============================================================ */
+function loadProfile() {
+  let p = {
+    uid: '', name: '', avatar: '👨‍💼', coins: 0,
+    theme: 'classic', matches: 0, wins: 0, loggedIn: false
+  };
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) Object.assign(p, JSON.parse(raw));
+  } catch (e) {}
+  if (!THEMES.some(function(t){ return t.id === p.theme; })) p.theme = 'classic';
+  profile = p;
+  return profile;
+}
+function saveProfile() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(profile)); } catch (e) {}
+}
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) Object.assign(gameSettings, JSON.parse(raw));
+  } catch (e) {}
+  soundEnabled = gameSettings.sound;
+}
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(gameSettings)); } catch (e) {}
+}
+function applyTheme(themeId) {
+  const t = THEMES.find(function(x){ return x.id === themeId; }) || THEMES[0];
+  const root = document.documentElement;
+  root.style.setProperty('--theme-c1', t.c1);
+  root.style.setProperty('--theme-c2', t.c2);
+  root.style.setProperty('--theme-accent', t.accent);
+}
+
+/* ============================================================
+   ============ PROFILE UI ====================================
+   ============================================================ */
+function renderProfileUI() {
+  if (!profile) return;
+  const set = function(id, v) { const e = document.getElementById(id); if (e) e.innerText = v; };
+  set('mpp-avatar', profile.avatar);
+  set('mpp-name', profile.name || 'Guest');
+  set('mpp-coins', '🪙 ' + formatCoins(profile.coins));
+  set('pp-avatar', profile.avatar);
+  set('pp-name', profile.name || 'Guest');
+  set('pp-uid', profile.uid || '—');
+  set('pp-balance', formatCoins(profile.coins));
+  set('pp-stats', profile.wins + ' / ' + profile.matches);
+
+  const loginState = document.getElementById('pp-login-state');
+  if (loginState) {
+    loginState.innerText = profile.loggedIn
+      ? '✅ সার্ভার অ্যাকাউন্টে লগইন করা আছে'
+      : 'গেস্ট মোডে খেলছেন (লোকাল প্রোফাইল)';
+  }
+
+  const ag = document.getElementById('avatar-grid');
+  if (ag) {
+    ag.innerHTML = '';
+    AVATARS.forEach(function(a) {
+      const chip = document.createElement('div');
+      chip.className = 'avatar-chip' + (a === profile.avatar ? ' selected' : '');
+      chip.innerText = a;
+      chip.onclick = function(){ selectAvatar(a); };
+      ag.appendChild(chip);
+    });
+  }
+
+  const tg = document.getElementById('theme-grid');
+  if (tg) {
+    tg.innerHTML = '';
+    THEMES.forEach(function(t) {
+      const sw = document.createElement('div');
+      sw.className = 'theme-swatch' + (t.id === profile.theme ? ' selected' : '');
+      sw.title = t.name;
+      sw.style.background = 'radial-gradient(circle at 35% 28%, ' + t.c1 + ', ' + t.c2 + ')';
+      sw.onclick = function(){ selectTheme(t.id); };
+      tg.appendChild(sw);
+    });
+  }
+
+  applyProfileToGameCard();
+  updateSettingsUI();
+  updateProfileMenuCounts();
+}
+
+function updateProfileMenuCounts() {
+  const friendsEl = document.getElementById('pp-friends-count');
+  const inboxEl = document.getElementById('pp-inbox-count');
+  if (friendsEl) friendsEl.innerText = (serverFriends.friends || []).length + ' জন ›';
+  if (inboxEl) inboxEl.innerText = inboxConversations.length + ' টি চ্যাট ›';
+}
+
+function applyProfileToGameCard() {
+  const av = document.getElementById('avatar-blue');
+  const nm = document.getElementById('name-blue');
+  const cn = document.getElementById('coins-blue');
+  if (av) av.innerText = profile.avatar;
+  if (nm) nm.innerText = profile.name || 'Guest';
+  if (cn) cn.innerText = '🪙 ' + formatCoins(profile.coins);
+}
+
+function updateSettingsUI() {
+  const tsSound = document.getElementById('ts-sound');
+  const tsVib = document.getElementById('ts-vibration');
+  const tsHi = document.getElementById('ts-highlight');
+  if (tsSound) tsSound.classList.toggle('on', gameSettings.sound);
+  if (tsVib) tsVib.classList.toggle('on', gameSettings.vibration);
+  if (tsHi) tsHi.classList.toggle('on', gameSettings.highlight);
+  document.querySelectorAll('#speed-options .speed-btn').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.speed === gameSettings.speed);
+  });
+}
+
+/* ============================================================
+   ============ PROFILE ACTIONS ===============================
+   ============================================================ */
+function openProfile() {
+  getAudioCtx();
+  renderProfileUI();
+  document.getElementById('profile-overlay').classList.add('show');
+}
+function closeProfile() { document.getElementById('profile-overlay').classList.remove('show'); }
+function profileOverlayClick(e) { if (e.target.id === 'profile-overlay') closeProfile(); }
+function openProfileFromGame() { closeSettings(); setTimeout(openProfile, 260); }
+
+function selectAvatar(a) {
+  profile.avatar = a;
+  saveProfile();
+  renderProfileUI();
+  fetch('/api/user/update', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ avatar: a })
+  }).catch(function(){});
+  showToast('অ্যাভাটার পরিবর্তন হয়েছে!');
+}
+function selectTheme(id) {
+  profile.theme = id;
+  saveProfile();
+  applyTheme(id);
+  renderProfileUI();
+  const t = THEMES.find(function(x){ return x.id === id; });
+  showToast('থিম: ' + (t ? t.name : id));
+}
+
+function copyUID() {
+  const uid = profile.uid || '';
+  if (!uid) { showToast('UID নেই'); return; }
+  const done = function(){ showToast('UID কপি হয়েছে: ' + uid); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(uid).then(done).catch(function(){ fallbackCopy(uid, done); });
+  } else fallbackCopy(uid, done);
+}
+function fallbackCopy(text, cb) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta); cb();
+  } catch (e) { showToast('কপি করা যায়নি'); }
+}
+
+function openEditName() {
+  const inp = document.getElementById('name-input');
+  inp.value = profile.name || '';
+  document.getElementById('name-overlay').classList.add('show');
+  setTimeout(function(){ inp.focus(); }, 120);
+}
+function closeNameEditor() { document.getElementById('name-overlay').classList.remove('show'); }
+function nameOverlayClick(e) { if (e.target.id === 'name-overlay') closeNameEditor(); }
+function saveName() {
+  const inp = document.getElementById('name-input');
+  let val = (inp.value || '').trim().replace(/[<>]/g, '');
+  if (val.length < 2) { showToast('কমপক্ষে ২ অক্ষরের নাম দিন'); return; }
+  if (val.length > 14) val = val.slice(0, 14);
+  profile.name = val;
+  saveProfile();
+  renderProfileUI();
+  closeNameEditor();
+  fetch('/api/user/update', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: val })
+  }).catch(function(){});
+  showToast('নাম সেভ হয়েছে: ' + val);
+}
+function resetProfile() {
+  if (!confirm('প্রোফাইল রিসেট করলে নাম, UID, ব্যালেন্স সব নতুন হয়ে যাবে। আপনি নিশ্চিত?')) return;
+  try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+  window.location.href = '/login';
+}
+
+function openHowToPlay() { document.getElementById('howto-overlay').classList.add('show'); }
+function closeHowToPlay() { document.getElementById('howto-overlay').classList.remove('show'); }
+function howtoOverlayClick(e) { if (e.target.id === 'howto-overlay') closeHowToPlay(); }
+
+/* ============================================================
+   ============ CLASSIC NAV ===================================
+   ============================================================ */
+function openClassicMode() {
+  getAudioCtx();
+  const cards = document.querySelectorAll('.mode-card');
+  cards.forEach(function(c) {
+    c.classList.remove('highlight-pulse');
+    void c.offsetWidth;
+    c.classList.add('highlight-pulse');
+    setTimeout(function(){ c.classList.remove('highlight-pulse'); }, 1800);
+  });
+  showToast('🎮 নিচের কার্ড থেকে মোড বেছে নিন');
+  vibrate(15);
+}
+
+/* ============================================================
+   ============ VS SCREEN =====================================
+   ============================================================ */
+const VS_BOT_POOL = [
+  { name: 'Rahim',  avatar: '🏎️' },
+  { name: 'Karim',  avatar: '🐯' },
+  { name: 'Jamal',  avatar: '👑' },
+  { name: 'Nasir',  avatar: '🦊' },
+  { name: 'Sabbir', avatar: '🐼' },
+  { name: 'Mitu',   avatar: '👩‍💼' },
+  { name: 'Rana',   avatar: '🦁' },
+  { name: 'Tanvir', avatar: '🐸' },
+  { name: 'Sohan',  avatar: '🤖' },
+  { name: 'Fahim',  avatar: '👽' }
+];
+
+function buildVSPlayerList(mode, sourceRoom) {
+  const colors = mode === '1v1' ? ['blue', 'green'] : ['blue', 'red', 'green', 'yellow'];
+  const used = {};
+  let botIdx = 0;
+  return colors.map(function(color) {
+    if (color === 'blue') {
+      return { color: color, name: profile.name, avatar: profile.avatar, isMe: true };
+    }
+    if (sourceRoom && sourceRoom.playerInfo && sourceRoom.playerInfo[color]) {
+      const p = sourceRoom.playerInfo[color];
+      return { color: color, name: p.name, avatar: p.avatar, isMe: !!p.isMe };
+    }
+    let bot = null;
+    for (let tries = 0; tries < VS_BOT_POOL.length * 2; tries++) {
+      const candidate = VS_BOT_POOL[botIdx % VS_BOT_POOL.length];
+      botIdx++;
+      if (!used[candidate.name]) { bot = candidate; break; }
+    }
+    if (!bot) bot = VS_BOT_POOL[0];
+    used[bot.name] = true;
+    return { color: color, name: bot.name, avatar: bot.avatar, isMe: false };
+  });
+}
+
+function playVSSound() {
+  vibrate([30, 20, 60, 20, 100]);
+  if (!soundEnabled) return;
+  const ctx = getAudioCtx(); if (!ctx) return;
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(120, now);
+  osc.frequency.exponentialRampToValueAtTime(1200, now + 0.32);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.13, now + 0.05);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.start(now); osc.stop(now + 0.5);
+  const t2 = now + 0.35;
+  const osc2 = ctx.createOscillator();
+  const gain2 = ctx.createGain();
+  osc2.type = 'triangle';
+  osc2.frequency.setValueAtTime(200, t2);
+  osc2.frequency.exponentialRampToValueAtTime(55, t2 + 0.32);
+  gain2.gain.setValueAtTime(0.0001, t2);
+  gain2.gain.exponentialRampToValueAtTime(0.28, t2 + 0.01);
+  gain2.gain.exponentialRampToValueAtTime(0.0001, t2 + 0.35);
+  osc2.connect(gain2); gain2.connect(ctx.destination);
+  osc2.start(t2); osc2.stop(t2 + 0.36);
+}
+
+function buildVSPlayerCard(p) {
+  const card = document.createElement('div');
+  card.className = 'vs-player' + (p.isMe ? ' me' : '');
+  card.innerHTML = '<div class="vs-player-avatar">' + (p.avatar || '👤') + '</div>' +
+                   '<div class="vs-player-name">' + escapeHtml(p.name || 'Player') + '</div>';
+  return card;
+}
+
+function showVSScreen(vsPlayers, mode, callback) {
+  const screen = document.getElementById('vs-screen');
+  const leftEl = document.getElementById('vs-left');
+  const rightEl = document.getElementById('vs-right');
+  leftEl.innerHTML = '';
+  rightEl.innerHTML = '';
+
+  const ms = document.getElementById('mode-screen');
+  const gr = document.getElementById('global-room-screen');
+  const fr = document.getElementById('friends-screen');
+  const ib = document.getElementById('inbox-screen');
+  const ch = document.getElementById('chat-screen');
+  const gw = document.getElementById('game-wrapper');
+  if (ms) ms.classList.add('hidden');
+  if (gr) gr.classList.add('hidden');
+  if (fr) fr.classList.add('hidden');
+  if (ib) ib.classList.add('hidden');
+  if (ch) ch.classList.add('hidden');
+  if (gw) gw.classList.remove('visible');
+
+  let leftPlayers, rightPlayers;
+  if (mode === '1v1' || vsPlayers.length === 2) {
+    leftPlayers = [vsPlayers[0]];
+    rightPlayers = [vsPlayers[1]];
+  } else {
+    leftPlayers = [vsPlayers[0], vsPlayers[3]];
+    rightPlayers = [vsPlayers[1], vsPlayers[2]];
+  }
+
+  leftPlayers.forEach(function(p){ leftEl.appendChild(buildVSPlayerCard(p)); });
+  rightPlayers.forEach(function(p){ rightEl.appendChild(buildVSPlayerCard(p)); });
+
+  screen.classList.remove('show');
+  void screen.offsetWidth;
+  screen.classList.add('show');
+
+  playVSSound();
+
+  setTimeout(function() {
+    screen.classList.remove('show');
+    setTimeout(function() {
+      if (typeof callback === 'function') callback();
+    }, 380);
+  }, 2600);
+}
+
+/* ============================================================
+   ============ MATCH TYPE / BET ==============================
+   ============================================================ */
+function selectMatchType(mode) {
+  getAudioCtx();
+  pendingGameMode = mode;
+  pendingBetAmount = 0;
+  document.getElementById('matchtype-overlay').classList.add('show');
+}
+function closeMatchType() {
+  document.getElementById('matchtype-overlay').classList.remove('show');
+  pendingGameMode = null;
+}
+function chooseNormalMatch() {
+  document.getElementById('matchtype-overlay').classList.remove('show');
+  const mode = pendingGameMode;
+  pendingGameMode = null;
+  currentBetInfo = null;
+  currentRoom = null;
+  const badge = document.getElementById('bet-badge');
+  if (badge) badge.classList.remove('show');
+  const vsPlayers = buildVSPlayerList(mode, null);
+  showVSScreen(vsPlayers, mode, function() {
+    startGame(mode, false);
+  });
+}
+function chooseBetMatch() {
+  document.getElementById('matchtype-overlay').classList.remove('show');
+  const balEl = document.getElementById('bet-balance-val');
+  if (balEl) balEl.innerText = formatCoins(profile.coins);
+  pendingBetAmount = 0;
+  document.querySelectorAll('#bet-options .bet-btn').forEach(function(b){ b.classList.remove('selected'); });
+  const custInp = document.getElementById('bet-custom-input');
+  if (custInp) custInp.value = '';
+  updateBetPreview();
+  document.getElementById('bet-overlay').classList.add('show');
+}
+function closeBetAmount() {
+  document.getElementById('bet-overlay').classList.remove('show');
+  pendingGameMode = null;
+  pendingBetAmount = 0;
+}
+function selectBetAmount(amount, ev) {
+  if (ev) ev.stopPropagation();
+  pendingBetAmount = amount;
+  document.querySelectorAll('#bet-options .bet-btn').forEach(function(b) {
+    b.classList.toggle('selected', parseInt(b.dataset.amount, 10) === amount);
+  });
+  const custInp = document.getElementById('bet-custom-input');
+  if (custInp) custInp.value = '';
+  updateBetPreview();
+  vibrate(12);
+}
+function onCustomBetInput(ev) {
+  let val = parseInt(ev.target.value, 10);
+  if (isNaN(val)) val = 0;
+  pendingBetAmount = val;
+  document.querySelectorAll('#bet-options .bet-btn').forEach(function(b){ b.classList.remove('selected'); });
+  updateBetPreview();
+}
+function updateBetPreview() {
+  const players = pendingGameMode === '1v1' ? 2 : 4;
+  const amt = pendingBetAmount || 0;
+  const elEntry = document.getElementById('bet-c-entry');
+  const elPlayers = document.getElementById('bet-c-players');
+  const elPool = document.getElementById('bet-c-pool');
+  const elFee = document.getElementById('bet-c-fee');
+  const elPrize = document.getElementById('bet-c-prize');
+  const elNote = document.getElementById('bet-c-note');
+  const elWarn = document.getElementById('bet-warn');
+  const startBtn = document.getElementById('bet-start-btn');
+
+  if (amt < 1) {
+    elEntry.innerText = '—'; elPlayers.innerText = players + ' জন';
+    elPool.innerText = '—'; elFee.innerText = '—'; elPrize.innerText = '—';
+    elNote.innerText = 'আপনার এন্ট্রি ফি নির্বাচন করুন';
+    elWarn.classList.add('hidden');
+    startBtn.disabled = false;
+    startBtn.style.opacity = '0.5';
+    return;
+  }
+  const pool = amt * players;
+  const fee = Math.round(pool * SYSTEM_FEE_RATE);
+  const prize = pool - fee;
+  elEntry.innerText = formatCoins(amt) + ' টাকা';
+  elPlayers.innerText = players + ' জন';
+  elPool.innerText = formatCoins(pool) + ' টাকা';
+  elFee.innerText = formatCoins(fee) + ' টাকা';
+  elPrize.innerText = formatCoins(prize) + ' টাকা';
+
+  let noteText;
+  if (players === 2) {
+    noteText = 'আপনি ও আপনার বন্ধু ' + formatCoins(amt) + ' টাকা করে দিলে মোট পুল ' + formatCoins(pool) + ' টাকা। যে জিতবে সে পাবে ' + formatCoins(prize) + ' টাকা (' + formatCoins(fee) + ' টাকা সিস্টেম ফি)।';
+  } else {
+    noteText = 'চারজন খেলোয়াড় ' + formatCoins(amt) + ' টাকা করে দিলে মোট পুল ' + formatCoins(pool) + ' টাকা। যে জিতবে সে পাবে ' + formatCoins(prize) + ' টাকা (' + formatCoins(fee) + ' টাকা সিস্টেম ফি)।';
+  }
+  elNote.innerText = noteText;
+
+  let warn = '';
+  if (amt < MIN_BET) warn = '⚠️ সর্বনিম্ন এন্ট্রি ফি ' + MIN_BET + ' টাকা।';
+  else if (amt > profile.coins) warn = '⚠️ আপনার ব্যালেন্স যথেষ্ট নয়। প্রয়োজন ' + formatCoins(amt) + ' টাকা, আছে ' + formatCoins(profile.coins) + ' টাকা।';
+
+  if (warn) {
+    elWarn.innerText = warn;
+    elWarn.classList.remove('hidden');
+    startBtn.style.opacity = '0.45';
+  } else {
+    elWarn.classList.add('hidden');
+    startBtn.style.opacity = '1';
+  }
+}
+
+/* ============================================================
+   ============ PRIVATE ROOM ==================================
+   ============================================================ */
+function startBetMatch() {
+  const amt = pendingBetAmount;
+  const players = pendingGameMode === '1v1' ? 2 : 4;
+  if (!amt || amt < MIN_BET) { showToast('⚠️ সর্বনিম্ন ' + MIN_BET + ' টাকা এন্ট্রি ফি দিন'); return; }
+  if (amt > profile.coins) { showToast('⚠️ আপনার ব্যালেন্স যথেষ্ট নয়'); return; }
+
+  const pool = amt * players;
+  const fee = Math.round(pool * SYSTEM_FEE_RATE);
+  const prize = pool - fee;
+
+  currentRoom = {
+    code: generateRoomCode(),
+    mode: pendingGameMode,
+    amount: amt,
+    players: players,
+    pool: pool,
+    fee: fee,
+    prize: prize,
+    joinedColors: ['blue'],
+    readyColors: [],
+    playerInfo: {
+      blue: { name: profile.name + ' (আপনি)', avatar: profile.avatar, isMe: true }
+    },
+    userReady: false,
+    started: false,
+    timers: []
+  };
+  document.getElementById('bet-overlay').classList.remove('show');
+  pendingGameMode = null;
+  pendingBetAmount = 0;
+  showRoomPanel();
+}
+function showRoomPanel() {
+  document.getElementById('room-code-value').innerText = 'LK-' + currentRoom.code;
+  renderRoomPlayers();
+  updateRoomStatus();
+  document.getElementById('room-ready-btn').disabled = true;
+  document.getElementById('room-ready-btn').innerText = '✅ আমি প্রস্তুত';
+  document.getElementById('room-overlay').classList.add('show');
+}
+function getOrderedRoomColors() {
+  return currentRoom.mode === '1v1' ? ['blue', 'green'] : ['blue', 'red', 'green', 'yellow'];
+}
+function getPlayerMeta(color) {
+  if (color === 'blue') {
+    return { name: profile.name + ' (আপনি)', avatar: profile.avatar, isMe: true };
+  }
+  if (currentRoom && currentRoom.playerInfo && currentRoom.playerInfo[color]) {
+    return currentRoom.playerInfo[color];
+  }
+  return { name: 'খেলোয়াড়ের অপেক্ষা...', avatar: '➕', isMe: false };
+}
+function renderRoomPlayers() {
+  const container = document.getElementById('room-players');
+  container.innerHTML = '';
+  const colors = getOrderedRoomColors();
+  colors.forEach(function(color) {
+    const joined = currentRoom.joinedColors.indexOf(color) >= 0;
+    const ready  = currentRoom.readyColors.indexOf(color) >= 0;
+    const meta = getPlayerMeta(color);
+    const slot = document.createElement('div');
+    if (joined && ready)       slot.className = 'room-player-slot ready';
+    else if (joined)           slot.className = 'room-player-slot filled';
+    else                       slot.className = 'room-player-slot waiting';
+
+    if (joined) {
+      slot.innerHTML = '<div class="rps-avatar">' + meta.avatar + '</div>' +
+        '<div class="rps-info">' +
+          '<div class="rps-name">' + escapeHtml(meta.name) + '</div>' +
+          '<div class="rps-status">' + (ready ? '✔️ প্রস্তুত' : '⏳ প্রস্তুতি নিচ্ছে...') + '</div>' +
+        '</div>' +
+        (ready ? '<div class="rps-badge">READY</div>' : '');
+    } else {
+      slot.innerHTML = '<div class="rps-avatar">➕</div>' +
+        '<div class="rps-info">' +
+          '<div class="rps-name">খেলোয়াড়ের অপেক্ষা...</div>' +
+          '<div class="rps-status">রুম কোড শেয়ার করুন</div>' +
+        '</div>';
+    }
+    container.appendChild(slot);
+  });
+}
+function updateRoomStatus() {
+  const el = document.getElementById('room-status');
+  const total = currentRoom.players;
+  const joined = currentRoom.joinedColors.length;
+  const readyCount = currentRoom.readyColors.length;
+  if (currentRoom.started) { el.innerHTML = '<span>🚀 ম্যাচ শুরু হচ্ছে...</span>'; return; }
+  if (joined < total) {
+    const remaining = total - joined;
+    el.innerHTML = '<span><span class="rs-dot"></span>' + remaining + ' জন খেলোয়াড়ের জন্য অপেক্ষা করা হচ্ছে...</span>';
+    return;
+  }
+  if (!currentRoom.userReady) {
+    el.innerHTML = '<span>✅ সবাই যোগ দিয়েছে! এখন "আমি প্রস্তুত" চাপুন</span>';
+    return;
+  }
+  if (readyCount < total) {
+    el.innerHTML = '<span><span class="rs-dot"></span>বাকি খেলোয়াড়দের প্রস্তুতির অপেক্ষা...</span>';
+    return;
+  }
+  el.innerHTML = '<span>🎯 সবাই প্রস্তুত! ম্যাচ শুরু হচ্ছে...</span>';
+}
+function playerReady() {
+  if (!currentRoom || currentRoom.started) return;
+  if (currentRoom.userReady) return;
+  if (currentRoom.joinedColors.length < currentRoom.players) {
+    showToast('⚠️ এখনও সব খেলোয়াড় যোগ দেয়নি');
+    return;
+  }
+  currentRoom.userReady = true;
+  if (currentRoom.readyColors.indexOf('blue') < 0) currentRoom.readyColors.push('blue');
+  document.getElementById('room-ready-btn').disabled = true;
+  document.getElementById('room-ready-btn').innerText = '✔️ প্রস্তুত';
+  renderRoomPlayers();
+  updateRoomStatus();
+  vibrate([30, 15, 30]);
+  checkRoomReady();
+}
+function checkRoomReady() {
+  if (!currentRoom || currentRoom.started) return;
+  const total = currentRoom.players;
+  const readyCount = currentRoom.readyColors.length;
+  if (readyCount >= total && currentRoom.userReady) {
+    currentRoom.started = true;
+    updateRoomStatus();
+    setTimeout(function(){ startRoomMatch(); }, 1400);
+  }
+}
+function serverAddPlayerToRoom(color, name, avatar) {
+  if (!currentRoom || currentRoom.started) return;
+  if (currentRoom.joinedColors.indexOf(color) >= 0) return;
+  currentRoom.joinedColors.push(color);
+  currentRoom.playerInfo[color] = { name: name, avatar: avatar, isMe: false };
+  renderRoomPlayers();
+  updateRoomStatus();
+  if (currentRoom.joinedColors.length >= currentRoom.players) {
+    document.getElementById('room-ready-btn').disabled = false;
+  }
+}
+function serverSetPlayerReady(color) {
+  if (!currentRoom || currentRoom.started) return;
+  if (currentRoom.readyColors.indexOf(color) < 0) {
+    currentRoom.readyColors.push(color);
+    renderRoomPlayers();
+    updateRoomStatus();
+    checkRoomReady();
+  }
+}
+window.serverAddPlayerToRoom = serverAddPlayerToRoom;
+window.serverSetPlayerReady = serverSetPlayerReady;
+
+function startRoomMatch() {
+  if (!currentRoom) return;
+  const amt = currentRoom.amount;
+  if (amt > profile.coins) {
+    showToast('⚠️ ব্যালেন্স যথেষ্ট নয়!');
+    cancelRoom();
+    return;
+  }
+  profile.coins -= amt;
+  LudoAuth.setBalance(profile.coins);
+  currentBetInfo = {
+    amount: currentRoom.amount, players: currentRoom.players,
+    pool: currentRoom.pool, fee: currentRoom.fee, prize: currentRoom.prize
+  };
+  const badge = document.getElementById('bet-badge');
+  const bText = document.getElementById('bet-badge-text');
+  bText.innerText = 'এন্ট্রি: ' + formatCoins(amt) + ' · প্রাইজ: ' + formatCoins(currentRoom.prize);
+  badge.classList.add('show');
+  document.getElementById('room-overlay').classList.remove('show');
+
+  const mode = currentRoom.mode;
+  const players = currentRoom.players;
+  const vsPlayers = buildVSPlayerList(mode, currentRoom);
+  if (currentRoom.timers) currentRoom.timers.forEach(function(t){ clearTimeout(t); });
+  currentRoom = null;
+  vibrate([40, 25, 40, 25, 80]);
+  showToast('💰 ' + formatCoins(amt) + ' টাকা এন্ট্রি কাটা হয়েছে। শুভ কামনা!');
+  showVSScreen(vsPlayers, mode, function() {
+    startGame(mode, true, players);
+  });
+}
+
+function cancelRoom() {
+  if (!currentRoom) return;
+  const refundAmt = currentRoom.amount;
+  if (refundAmt > 0) {
+    profile.coins += refundAmt;
+    LudoAuth.setBalance(profile.coins);
+    showToast('💰 রুম বাতিল — ' + formatCoins(refundAmt) + ' টাকা সম্পূর্ণ ফেরত পেয়েছেন');
+  }
+  if (currentRoom.timers) currentRoom.timers.forEach(function(t){ clearTimeout(t); });
+  currentRoom = null;
+  document.getElementById('room-overlay').classList.remove('show');
+  document.getElementById('game-wrapper').classList.remove('visible');
+  document.getElementById('mode-screen').classList.remove('hidden');
+}
+function copyRoomCode() {
+  if (!currentRoom) return;
+  const code = 'LK-' + currentRoom.code;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(function(){ showToast('রুম কোড কপি: ' + code); })
+      .catch(function(){ fallbackCopy(code, function(){ showToast('রুম কোড কপি: ' + code); }); });
+  } else fallbackCopy(code, function(){ showToast('রুম কোড কপি: ' + code); });
+}
+function buildRoomMessage() {
+  if (!currentRoom) return '';
+  const code = 'LK-' + currentRoom.code;
+  return '🎲 Ludo King বাজি ম্যাচ!\n\n🔗 রুম কোড: ' + code +
+         '\n💰 এন্ট্রি ফি: ' + formatCoins(currentRoom.amount) + ' টাকা' +
+         '\n👥 খেলোয়াড়: ' + currentRoom.players + ' জন' +
+         '\n🏆 প্রাইজ: ' + formatCoins(currentRoom.prize) + ' টাকা\n\nখেলতে যোগ দিন!';
+}
+function buildRoomLink() {
+  const code = currentRoom ? ('LK-' + currentRoom.code) : '';
+  const base = location.origin + location.pathname;
+  return base + '#room=' + code;
+}
+function shareRoom(platform) {
+  if (!currentRoom) return;
+  const msg = buildRoomMessage();
+  const link = buildRoomLink();
+  const fullMsg = msg + '\n\n' + link;
+  if (platform === 'whatsapp') {
+    try { window.open('https://wa.me/?text=' + encodeURIComponent(fullMsg), '_blank'); }
+    catch (e) { fallbackCopy(fullMsg, function(){ showToast('মেসেজ কপি হয়েছে — WhatsApp-এ পেস্ট করুন'); }); }
+  } else if (platform === 'messenger') {
+    if (navigator.share) {
+      navigator.share({ title: 'Ludo King বাজি ম্যাচ', text: msg, url: link })
+        .catch(function(){ fallbackCopy(fullMsg, function(){ showToast('মেসেজ কপি হয়েছে — Messenger-এ পেস্ট করুন'); }); });
+    } else fallbackCopy(fullMsg, function(){ showToast('মেসেজ কপি হয়েছে — Messenger-এ পেস্ট করুন'); });
+  } else fallbackCopy(fullMsg, function(){ showToast('রুম লিংক কপি হয়েছে!'); });
+}
+
+/* ============================================================
+   ============ GLOBAL ROOM ===================================
+   ============================================================ */
+let globalRooms = [];
+let roomTickInterval = null;
+let paCurrentUserId = null;
+
+function generateRoomId() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
   return 'R-' + s;
 }
 function isUserInAnyRoom() {
-  return globalRooms.some(r =>
-    r.status === 'waiting' && r.players.some(p => p.id === profile.uid)
-  );
+  return globalRooms.some(function(r) {
+    return r.status === 'waiting' && r.players.some(function(p){ return p.id === profile.uid; });
+  });
 }
 
 function openGlobalRoom() {
@@ -22,12 +813,12 @@ function closeGlobalRoom() {
 function renderGlobalRooms() {
   const list = document.getElementById('gr-list');
   list.innerHTML = '';
-  const active = globalRooms.filter(r => r.status === 'waiting');
+  const active = globalRooms.filter(function(r){ return r.status === 'waiting'; });
   if (active.length === 0) {
     list.innerHTML = '<div class="gr-empty">🌐 এই মুহূর্তে কোনো খোলা রুম নেই।<br>➕ উপরের বাটনে চাপ দিয়ে নতুন রুম তৈরি করুন!</div>';
     return;
   }
-  active.forEach(room => list.appendChild(buildRoomCard(room)));
+  active.forEach(function(room){ list.appendChild(buildRoomCard(room)); });
 }
 
 function buildRoomCard(room) {
@@ -41,15 +832,14 @@ function buildRoomCard(room) {
   const av = document.createElement('div');
   av.className = 'gr-creator-avatar';
   av.innerText = room.creator_photo;
-  av.onclick = () => openProfileAction(room.creator_id, room.creator_name, room.creator_photo);
+  av.onclick = function(){ openProfileAction(room.creator_id, room.creator_name, room.creator_photo); };
   header.appendChild(av);
 
   const info = document.createElement('div');
   info.className = 'gr-creator-info';
-  info.innerHTML = `
-    <div class="gr-creator-name">${escapeHtml(room.creator_name)}</div>
-    <div class="gr-coin-line">🪙 ${formatCoins(room.coin_amount)} Coins · ${room.mode === '1v1' ? '1 vs 1' : '4 Player'}</div>
-  `;
+  info.innerHTML = '<div class="gr-creator-name">' + escapeHtml(room.creator_name) + '</div>' +
+                   '<div class="gr-coin-line">🪙 ' + formatCoins(room.coin_amount) + ' Coins · ' +
+                   (room.mode === '1v1' ? '1 vs 1' : '4 Player') + '</div>';
   header.appendChild(info);
 
   const timeLeft = document.createElement('div');
@@ -68,18 +858,14 @@ function buildRoomCard(room) {
     if (player) {
       slot.className = 'gr-slot filled';
       if (player.id === profile.uid) slot.classList.add('me');
-      slot.innerHTML = `
-        <div class="gr-slot-avatar">${player.photo}</div>
-        <div class="gr-slot-name">${escapeHtml(player.name)}</div>
-      `;
-      slot.onclick = () => openProfileAction(player.id, player.name, player.photo);
+      slot.innerHTML = '<div class="gr-slot-avatar">' + player.photo + '</div>' +
+                       '<div class="gr-slot-name">' + escapeHtml(player.name) + '</div>';
+      slot.onclick = (function(p){ return function(){ openProfileAction(p.id, p.name, p.photo); }; })(player);
     } else {
       slot.className = 'gr-slot empty';
-      slot.innerHTML = `
-        <div class="gr-slot-join">➕</div>
-        <div class="gr-slot-join-label">JOIN</div>
-      `;
-      slot.onclick = () => attemptJoinRoom(room);
+      slot.innerHTML = '<div class="gr-slot-join">➕</div>' +
+                       '<div class="gr-slot-join-label">JOIN</div>';
+      slot.onclick = (function(r){ return function(){ attemptJoinRoom(r); }; })(room);
     }
     slots.appendChild(slot);
   }
@@ -91,7 +877,7 @@ function buildRoomCard(room) {
     const btn = document.createElement('button');
     btn.className = 'gr-cancel-btn';
     btn.innerText = '✕ রুম বাতিল করুন (সম্পূর্ণ রিফান্ড)';
-    btn.onclick = () => cancelGlobalRoom(room.room_id);
+    btn.onclick = function(){ cancelGlobalRoom(room.room_id); };
     row.appendChild(btn);
     card.appendChild(row);
   }
@@ -100,11 +886,11 @@ function buildRoomCard(room) {
 
 function attemptJoinRoom(room) {
   if (room.status !== 'waiting') { showToast('এই রুম আর খোলা নেই'); return; }
-  if (room.players.some(p => p.id === profile.uid)) { showToast('আপনি ইতিমধ্যেই এই রুমে আছেন'); return; }
+  if (room.players.some(function(p){ return p.id === profile.uid; })) { showToast('আপনি ইতিমধ্যেই এই রুমে আছেন'); return; }
   if (room.players.length >= room.maxPlayers) { showToast('রুম পূর্ণ!'); return; }
   if (isUserInAnyRoom()) { showToast('আপনি ইতিমধ্যে অন্য একটি রুমে আছেন'); return; }
   if (profile.coins < room.coin_amount) {
-    showToast(`⚠️ পর্যাপ্ত কয়েন নেই! প্রয়োজন ${formatCoins(room.coin_amount)}, আছে ${formatCoins(profile.coins)}`);
+    showToast('⚠️ পর্যাপ্ত কয়েন নেই! প্রয়োজন ' + formatCoins(room.coin_amount) + ', আছে ' + formatCoins(profile.coins));
     return;
   }
 
@@ -113,7 +899,7 @@ function attemptJoinRoom(room) {
 
   room.players.push({ id: profile.uid, name: profile.name, photo: profile.avatar, isCreator: false });
   vibrate(30);
-  showToast(`✅ জয়েন সম্পন্ন! ${formatCoins(room.coin_amount)} কয়েন কাটা হয়েছে।`);
+  showToast('✅ জয়েন সম্পন্ন! ' + formatCoins(room.coin_amount) + ' কয়েন কাটা হয়েছে।');
 
   if (room.players.length >= room.maxPlayers) {
     room.status = 'full';
@@ -128,10 +914,10 @@ function startCountdownAndStart(room) {
   if (room._starting) return;
   room._starting = true;
   let count = 3;
-  showToast(`🎯 রুম পূর্ণ! ${count} সেকেন্ডে শুরু হচ্ছে...`);
-  const int = setInterval(() => {
+  showToast('🎯 রুম পূর্ণ! ' + count + ' সেকেন্ডে শুরু হচ্ছে...');
+  const int = setInterval(function() {
     count--;
-    if (count > 0) showToast(`শুরু হচ্ছে ${count}...`);
+    if (count > 0) showToast('শুরু হচ্ছে ' + count + '...');
     else {
       clearInterval(int);
       beginGlobalMatch(room);
@@ -151,18 +937,20 @@ function beginGlobalMatch(room) {
   const fee = Math.round(pool * SYSTEM_FEE_RATE);
   const prize = pool - fee;
 
-  currentBetInfo = { amount: room.coin_amount, players, pool, fee, prize };
+  currentBetInfo = { amount: room.coin_amount, players: players, pool: pool, fee: fee, prize: prize };
   document.getElementById('bet-badge-text').innerText =
-    `এন্ট্রি: ${formatCoins(room.coin_amount)} · প্রাইজ: ${formatCoins(prize)}`;
+    'এন্ট্রি: ' + formatCoins(room.coin_amount) + ' · প্রাইজ: ' + formatCoins(prize);
   document.getElementById('bet-badge').classList.add('show');
 
   const colors = room.mode === '1v1' ? ['blue', 'green'] : ['blue', 'red', 'green', 'yellow'];
-  const vsPlayers = room.players.map((p, i) => ({
-    color: colors[i],
-    name: p.id === profile.uid ? profile.name : p.name,
-    avatar: p.photo,
-    isMe: p.id === profile.uid
-  }));
+  const vsPlayers = room.players.map(function(p, i) {
+    return {
+      color: colors[i],
+      name: p.id === profile.uid ? profile.name : p.name,
+      avatar: p.photo,
+      isMe: p.id === profile.uid
+    };
+  });
   while (vsPlayers.length < colors.length) {
     const i = vsPlayers.length;
     const bot = VS_BOT_POOL[i % VS_BOT_POOL.length];
@@ -171,17 +959,17 @@ function beginGlobalMatch(room) {
 
   document.getElementById('global-room-screen').classList.add('hidden');
   vibrate([40, 25, 40, 25, 80]);
-  showVSScreen(vsPlayers, room.mode, () => {
+  showVSScreen(vsPlayers, room.mode, function() {
     startGame(room.mode, true, players);
   });
 }
 
 function cancelGlobalRoom(roomId) {
-  const idx = globalRooms.findIndex(r => r.room_id === roomId);
+  const idx = globalRooms.findIndex(function(r){ return r.room_id === roomId; });
   if (idx < 0) return;
   const room = globalRooms[idx];
   refundRoom(room, 'রুম বাতিল');
-  if (room.timers) room.timers.forEach(t => { clearInterval(t); clearTimeout(t); });
+  if (room.timers) room.timers.forEach(function(t){ clearInterval(t); clearTimeout(t); });
   room.status = 'cancelled';
   globalRooms.splice(idx, 1);
   renderGlobalRooms();
@@ -189,34 +977,34 @@ function cancelGlobalRoom(roomId) {
 }
 
 function refundRoom(room, reason) {
-  room.players.forEach(player => {
+  room.players.forEach(function(player) {
     if (player.id === profile.uid) {
       profile.coins += room.coin_amount;
       LudoAuth.setBalance(profile.coins);
-      showToast(`💰 ${formatCoins(room.coin_amount)} কয়েন সম্পূর্ণ ফেরত পেয়েছেন (${reason})`);
+      showToast('💰 ' + formatCoins(room.coin_amount) + ' কয়েন সম্পূর্ণ ফেরত পেয়েছেন (' + reason + ')');
     }
   });
 }
 
 function startRoomTick() {
   if (roomTickInterval) return;
-  roomTickInterval = setInterval(() => {
+  roomTickInterval = setInterval(function() {
     const now = Date.now();
     let changed = false;
-    globalRooms.slice().forEach(room => {
+    globalRooms.slice().forEach(function(room) {
       if (room.status === 'waiting' && room.expiresAt <= now) {
         refundRoom(room, 'সময় শেষ');
-        if (room.timers) room.timers.forEach(t => { clearInterval(t); clearTimeout(t); });
+        if (room.timers) room.timers.forEach(function(t){ clearInterval(t); clearTimeout(t); });
         room.status = 'cancelled';
         changed = true;
       }
     });
     if (changed) {
-      globalRooms = globalRooms.filter(r => r.status === 'waiting');
+      globalRooms = globalRooms.filter(function(r){ return r.status === 'waiting'; });
       renderGlobalRooms();
     }
-    document.querySelectorAll('.gr-time').forEach(el => {
-      const r = globalRooms.find(x => x.room_id === el.dataset.roomId);
+    document.querySelectorAll('.gr-time').forEach(function(el) {
+      const r = globalRooms.find(function(x){ return x.room_id === el.dataset.roomId; });
       if (r) el.innerText = formatTimeLeft(r.expiresAt - now);
     });
   }, 1000);
@@ -248,12 +1036,11 @@ function onCreateCoinInput(e) {
 }
 function updateCreateRoomUI() {
   const hasCustom = !!document.getElementById('cr-coin-input').value;
-  document.querySelectorAll('.cr-mode-btn').forEach(b => {
+  document.querySelectorAll('.cr-mode-btn').forEach(function(b) {
     b.classList.toggle('selected', b.dataset.mode === crMode);
   });
-  document.querySelectorAll('.cr-coin-btn').forEach(b => {
-    b.classList.toggle('selected',
-      !hasCustom && parseInt(b.dataset.coin, 10) === crCoin);
+  document.querySelectorAll('.cr-coin-btn').forEach(function(b) {
+    b.classList.toggle('selected', !hasCustom && parseInt(b.dataset.coin, 10) === crCoin);
   });
   document.getElementById('cr-balance-val').innerText = formatCoins(profile.coins);
 }
@@ -275,7 +1062,7 @@ function confirmCreateRoom() {
     creator_photo: profile.avatar,
     mode: crMode,
     coin_amount: amt,
-    maxPlayers,
+    maxPlayers: maxPlayers,
     players: [{ id: profile.uid, name: profile.name, photo: profile.avatar, isCreator: true }],
     status: 'waiting',
     createdAt: Date.now(),
@@ -284,7 +1071,7 @@ function confirmCreateRoom() {
   };
   globalRooms.push(room);
   closeCreateRoom();
-  showToast(`✅ রুম তৈরি! ${formatCoins(amt)} কয়েন কাটা হয়েছে।`);
+  showToast('✅ রুম তৈরি! ' + formatCoins(amt) + ' কয়েন কাটা হয়েছে।');
   renderGlobalRooms();
 }
 
@@ -306,7 +1093,7 @@ function paOverlayClick(e) {
 function onMessageClick() {
   if (!paCurrentUserId) { closeProfileAction(); return; }
   const uid = paCurrentUserId;
-  const u = (serverFriends.friends || []).find(x => x.uid === uid);
+  const u = (serverFriends.friends || []).find(function(x){ return x.uid === uid; });
   closeProfileAction();
   openChatWith(uid, u ? u.name : 'User', u ? u.avatar : '👤');
 }
@@ -372,12 +1159,12 @@ function goHome() { openExitConfirm(); }
 function openExitConfirm() {
   const t = document.getElementById('exit-text');
   if (currentRoom) {
-    t.innerText = `⚠️ আপনি একটি রুমে আছেন (কোড: LK-${currentRoom.code})।\n\nবের হলে রুম বাতিল হবে — ${formatCoins(currentRoom.amount)} টাকা সম্পূর্ণ ফেরত পাবেন।\n\nনিশ্চিত?`;
+    t.innerText = '⚠️ আপনি একটি রুমে আছেন (কোড: LK-' + currentRoom.code + ')।\n\nবের হলে রুম বাতিল হবে — ' + formatCoins(currentRoom.amount) + ' টাকা সম্পূর্ণ ফেরত পাবেন।\n\nনিশ্চিত?';
   } else if (gameActive && currentBetInfo) {
     const entry = currentBetInfo.amount;
     const penalty = Math.round(entry * CANCEL_PENALTY_RATE);
     const refund = entry - penalty;
-    t.innerText = `⚠️ গেম চলছে!\n\nবের হলে আপনার এন্ট্রি ফি ${formatCoins(entry)} টাকা থেকে:\n• ${formatCoins(penalty)} টাকা কাটা হবে (৩০%)\n• ${formatCoins(refund)} টাকা ফেরত পাবেন (৭০%)\n\nপ্রতিপক্ষের টাকা অক্ষত থাকবে।\n\nনিশ্চিত?`;
+    t.innerText = '⚠️ গেম চলছে!\n\nবের হলে আপনার এন্ট্রি ফি ' + formatCoins(entry) + ' টাকা থেকে:\n• ' + formatCoins(penalty) + ' টাকা কাটা হবে (৩০%)\n• ' + formatCoins(refund) + ' টাকা ফেরত পাবেন (৭০%)\n\nপ্রতিপক্ষের টাকা অক্ষত থাকবে।\n\nনিশ্চিত?';
   } else {
     t.innerText = 'বর্তমান খেলাটি হারিয়ে যাবে। আপনি কি নিশ্চিত?';
   }
@@ -395,7 +1182,7 @@ function handleInGameQuit() {
   const refund = entry - penalty;
   profile.coins += refund;
   LudoAuth.setBalance(profile.coins);
-  showToast(`❌ আপনি গেম ছেড়েছেন। ${formatCoins(penalty)} টাকা কাটা (৩০%), ${formatCoins(refund)} টাকা ফেরত (৭০%)।`);
+  showToast('❌ আপনি গেম ছেড়েছেন। ' + formatCoins(penalty) + ' টাকা কাটা (৩০%), ' + formatCoins(refund) + ' টাকা ফেরত (৭০%)।');
   gameActive = false;
   currentBetInfo = null;
   document.getElementById('bet-badge').classList.remove('show');
@@ -406,7 +1193,7 @@ function handleOpponentQuit(quitterColor) {
   const myEntry = currentBetInfo.amount;
   profile.coins += myEntry;
   LudoAuth.setBalance(profile.coins);
-  showToast(`🏆 প্রতিপক্ষ (${quitterColor}) গেম ছেড়েছে! আপনার ${formatCoins(myEntry)} টাকা সম্পূর্ণ ফেরত পেয়েছেন।`);
+  showToast('🏆 প্রতিপক্ষ (' + quitterColor + ') গেম ছেড়েছে! আপনার ' + formatCoins(myEntry) + ' টাকা সম্পূর্ণ ফেরত পেয়েছেন।');
   gameActive = false;
   currentBetInfo = null;
   document.getElementById('bet-badge').classList.remove('show');
@@ -415,7 +1202,7 @@ function handleOpponentQuit(quitterColor) {
 window.serverOpponentQuit = function(quitterColor) {
   handleOpponentQuit(quitterColor);
   document.getElementById('game-wrapper').classList.remove('visible');
-  setTimeout(() => {
+  setTimeout(function() {
     document.getElementById('mode-screen').classList.remove('hidden');
   }, 1500);
 };
@@ -432,10 +1219,10 @@ function doExitGame() {
   document.getElementById('chat-screen').classList.add('hidden');
   document.getElementById('vs-screen').classList.remove('show');
   currentBetInfo = null;
-  setTimeout(() => {
+  setTimeout(function() {
     document.getElementById('mode-screen').classList.remove('hidden');
   }, 250);
-  pawns.forEach(p => {
+  pawns.forEach(function(p) {
     p.step = -1;
     p.element.classList.remove('highlight', 'jumping');
     renderPawn(p);
@@ -456,9 +1243,9 @@ function doExitGame() {
    ============================================================ */
 const LudoAuth = {
   currentUser: null,
-  isLoggedIn() { return !!this.currentUser; },
+  isLoggedIn: function() { return !!this.currentUser; },
 
-  async fetchServerUser() {
+  fetchServerUser: async function() {
     try {
       const res = await fetch('/api/user');
       const data = await res.json();
@@ -484,11 +1271,11 @@ const LudoAuth = {
     }
   },
 
-  setUser(user) {
+  setUser: function(user) {
     if (!user) return;
     this.currentUser = user;
     if (user.name) profile.name = String(user.name).slice(0, 14);
-    if (user.avatar && AVATARS.includes(user.avatar)) profile.avatar = user.avatar;
+    if (user.avatar && AVATARS.indexOf(user.avatar) >= 0) profile.avatar = user.avatar;
     if (typeof user.coins === 'number') profile.coins = user.coins;
     if (user.uid) profile.uid = user.uid;
     profile.loggedIn = true;
@@ -497,7 +1284,7 @@ const LudoAuth = {
     showToast('স্বাগতম, ' + profile.name + '!');
   },
 
-  setBalance(coins) {
+  setBalance: function(coins) {
     profile.coins = Number(coins) || 0;
     saveProfile();
     renderProfileUI();
@@ -507,14 +1294,14 @@ const LudoAuth = {
     if (crBalEl) crBalEl.innerText = formatCoins(profile.coins);
   },
 
-  recordMatch(won) {
+  recordMatch: function(won) {
     profile.matches++;
     if (won) profile.wins++;
     saveProfile();
     renderProfileUI();
   },
 
-  async logout() {
+  logout: async function() {
     try { await fetch('/api/logout', { method: 'POST' }); } catch (e) {}
     this.currentUser = null;
     profile.loggedIn = false;
@@ -534,8 +1321,8 @@ let diceValue = 0;
 let consecutiveSixes = 0;
 let canRoll = true;
 let activePawnsToMove = [];
-const gridCells = {};
-
+let gridCells = {};
+let pawns = [];
 let audioCtx = null;
 let soundEnabled = true;
 
@@ -577,7 +1364,7 @@ function playDiceRollSound() {
     { t: 0.150, vol: 0.10, freq: 1050, q: 9 },
     { t: 0.190, vol: 0.09, freq: 900,  q: 10 }
   ];
-  clicks.forEach((c) => {
+  clicks.forEach(function(c) {
     const t = now + c.t;
     const bufSize = Math.max(1, Math.floor(ctx.sampleRate * 0.025));
     const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
@@ -598,7 +1385,7 @@ function playSixSound() {
   if (!soundEnabled) return;
   const ctx = getAudioCtx(); if (!ctx) return;
   const now = ctx.currentTime;
-  [523.25, 659.25, 783.99].forEach((freq, i) => {
+  [523.25, 659.25, 783.99].forEach(function(freq, i) {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'triangle'; osc.frequency.value = freq;
@@ -630,7 +1417,7 @@ function playSafeZoneSound() {
   if (!soundEnabled) return;
   const ctx = getAudioCtx(); if (!ctx) return;
   const now = ctx.currentTime;
-  [659.25, 783.99, 987.77, 1318.51].forEach((freq, i) => {
+  [659.25, 783.99, 987.77, 1318.51].forEach(function(freq, i) {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sine'; osc.frequency.value = freq;
@@ -647,7 +1434,7 @@ function playWinSound() {
   if (!soundEnabled) return;
   const ctx = getAudioCtx(); if (!ctx) return;
   const now = ctx.currentTime;
-  [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((freq, i) => {
+  [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach(function(freq, i) {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'triangle';
@@ -701,8 +1488,6 @@ const playerConfigs = {
   }
 };
 
-const pawns = [];
-
 const PIN_COLORS = {
   blue:   { grad: 'pin-blue',   base: '#0d47a1', dark: '#051e3e', shine: 0.45 },
   red:    { grad: 'pin-red',    base: '#b71c1c', dark: '#7f0000', shine: 0.40 },
@@ -712,21 +1497,23 @@ const PIN_COLORS = {
 
 function pawnSVG(color) {
   const c = PIN_COLORS[color];
-  return `
-    <svg class="ludo-pin" viewBox="0 0 60 78" xmlns="http://www.w3.org/2000/svg">
-      <ellipse cx="30" cy="68" rx="15" ry="6.5" fill="${c.base}"/>
-      <ellipse cx="30" cy="66.5" rx="10.5" ry="3.8" fill="${c.dark}"/>
-      <path d="M30 4 C17 4 9 15 9 27 C9 44 30 64 30 64 C30 64 51 44 51 27 C51 15 43 4 30 4 Z" fill="url(#pin-white)"/>
-      <circle cx="30" cy="26" r="12.5" fill="url(#${c.grad})"/>
-      <circle cx="30" cy="26" r="12.5" fill="url(#pin-shine)" opacity="${c.shine}"/>
-    </svg>
-  `;
+  return '<svg class="ludo-pin" viewBox="0 0 60 78" xmlns="http://www.w3.org/2000/svg">' +
+    '<ellipse cx="30" cy="68" rx="15" ry="6.5" fill="' + c.base + '"/>' +
+    '<ellipse cx="30" cy="66.5" rx="10.5" ry="3.8" fill="' + c.dark + '"/>' +
+    '<path d="M30 4 C17 4 9 15 9 27 C9 44 30 64 30 64 C30 64 51 44 51 27 C51 15 43 4 30 4 Z" fill="url(#pin-white)"/>' +
+    '<circle cx="30" cy="26" r="12.5" fill="url(#' + c.grad + ')"/>' +
+    '<circle cx="30" cy="26" r="12.5" fill="url(#pin-shine)" opacity="' + c.shine + '"/>' +
+    '</svg>';
 }
 
 function initBoard() {
   const board = document.getElementById('board');
   if (!board) return;
-  board.querySelectorAll('.cell').forEach(c => c.remove());
+
+  board.innerHTML = '';
+  gridCells = {};
+  pawns = [];
+
   for (let r = 0; r < 15; r++) {
     for (let c = 0; c < 15; c++) {
       if ((r < 6 && c < 6) || (r < 6 && c > 8) || (r > 8 && c < 6) || (r > 8 && c > 8) || (r >= 6 && r <= 8 && c >= 6 && c <= 8)) continue;
@@ -747,41 +1534,51 @@ function initBoard() {
       if (r === 7 && c === 14) cell.classList.add('arrow', 'arrow-left');
       if (r === 14 && c === 7) cell.classList.add('arrow', 'arrow-up');
       board.appendChild(cell);
-      gridCells[`${r},${c}`] = cell;
+      gridCells[r + ',' + c] = cell;
     }
   }
-  ALL_PLAYERS.forEach(color => {
+
+  ALL_PLAYERS.forEach(function(color) {
     const yard = document.createElement('div');
-    yard.className = `yard yard-${color}`;
+    yard.className = 'yard yard-' + color;
     const inner = document.createElement('div');
     inner.className = 'yard-inner';
     for (let i = 0; i < 4; i++) {
       const spot = document.createElement('div');
       spot.className = 'yard-spot';
       const coord = playerConfigs[color].yardCoords[i];
-      gridCells[`${coord.r},${coord.c}`] = spot;
+      gridCells[coord.r + ',' + coord.c] = spot;
       inner.appendChild(spot);
     }
     yard.appendChild(inner);
     board.appendChild(yard);
   });
-  starIndices.forEach(idx => {
+
+  const center = document.createElement('div');
+  center.className = 'center-area';
+  center.innerHTML = '<div class="triangle tri-top"></div>' +
+                     '<div class="triangle tri-right"></div>' +
+                     '<div class="triangle tri-bottom"></div>' +
+                     '<div class="triangle tri-left"></div>';
+  board.appendChild(center);
+
+  starIndices.forEach(function(idx) {
     const coord = mainPathCoords[idx];
-    if (gridCells[`${coord.r},${coord.c}`]) gridCells[`${coord.r},${coord.c}`].classList.add('star');
+    const cell = gridCells[coord.r + ',' + coord.c];
+    if (cell) cell.classList.add('star');
   });
-  if (pawns.length === 0) {
-    ALL_PLAYERS.forEach(color => {
-      for (let i = 0; i < 4; i++) {
-        const pawnElem = document.createElement('div');
-        pawnElem.className = `pawn pawn-${color}`;
-        pawnElem.innerHTML = pawnSVG(color);
-        const pawnObj = { id: `${color}-${i}`, color: color, index: i, step: -1, element: pawnElem };
-        pawnElem.onclick = () => onPawnClick(pawnObj);
-        pawns.push(pawnObj);
-        renderPawn(pawnObj);
-      }
-    });
-  }
+
+  ALL_PLAYERS.forEach(function(color) {
+    for (let i = 0; i < 4; i++) {
+      const pawnElem = document.createElement('div');
+      pawnElem.className = 'pawn pawn-' + color;
+      pawnElem.innerHTML = pawnSVG(color);
+      const pawnObj = { id: color + '-' + i, color: color, index: i, step: -1, element: pawnElem };
+      pawnElem.onclick = (function(p){ return function(){ onPawnClick(p); }; })(pawnObj);
+      pawns.push(pawnObj);
+      renderPawn(pawnObj);
+    }
+  });
 }
 
 function renderPawn(pawn) {
@@ -795,20 +1592,20 @@ function renderPawn(pawn) {
     coord = playerConfigs[pawn.color].homeLane[laneIdx];
   }
   if (!coord) return;
-  const targetCell = gridCells[`${coord.r},${coord.c}`];
+  const targetCell = gridCells[coord.r + ',' + coord.c];
   if (targetCell) targetCell.appendChild(pawn.element);
 }
 
 function updateTurnUI() {
-  ALL_PLAYERS.forEach(color => {
-    const el = document.getElementById(`card-${color}`);
+  ALL_PLAYERS.forEach(function(color) {
+    const el = document.getElementById('card-' + color);
     if (el) el.classList.remove('card-active');
   });
   const activeColor = activePlayers[turnIndex];
-  const el = document.getElementById(`card-${activeColor}`);
+  const el = document.getElementById('card-' + activeColor);
   if (el) el.classList.add('card-active');
-  document.getElementById('status-text').innerText =
-    `${activeColor.toUpperCase()}-এর চাল! আপনার ডায়াইসে চাপ দিন।`;
+  const statusEl = document.getElementById('status-text');
+  if (statusEl) statusEl.innerText = activeColor.toUpperCase() + '-এর চাল! আপনার ডায়াইসে চাপ দিন।';
 }
 function nextTurn() {
   consecutiveSixes = 0;
@@ -821,10 +1618,11 @@ function rollDice() {
   getAudioCtx();
   playDiceRollSound();
   const activeColor = activePlayers[turnIndex];
-  const diceElem = document.getElementById(`dice-${activeColor}`);
+  const diceElem = document.getElementById('dice-' + activeColor);
+  if (!diceElem) return;
   diceElem.classList.add('rolling');
   canRoll = false;
-  setTimeout(() => {
+  setTimeout(function() {
     diceElem.classList.remove('rolling');
     diceValue = Math.floor(Math.random() * 6) + 1;
     const diceFaces = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
@@ -833,7 +1631,7 @@ function rollDice() {
       playSixSound();
       consecutiveSixes++;
       if (consecutiveSixes === 3) {
-        document.getElementById('status-text').innerText = `পরপর ৩ বার ৬! চাল বাতিল হলো।`;
+        document.getElementById('status-text').innerText = 'পরপর ৩ বার ৬! চাল বাতিল হলো।';
         setTimeout(nextTurn, 1200);
         return;
       }
@@ -843,27 +1641,27 @@ function rollDice() {
 }
 function evaluateMoves() {
   const currentColor = activePlayers[turnIndex];
-  const playerPawns = pawns.filter(p => p.color === currentColor);
+  const playerPawns = pawns.filter(function(p){ return p.color === currentColor; });
   activePawnsToMove = [];
-  playerPawns.forEach(pawn => {
+  playerPawns.forEach(function(pawn) {
     if (pawn.step === -1 && diceValue === 6) activePawnsToMove.push(pawn);
     else if (pawn.step >= 0 && pawn.step + diceValue <= 56) activePawnsToMove.push(pawn);
   });
   if (activePawnsToMove.length === 0) {
-    document.getElementById('status-text').innerText = `কোন চাল সম্ভব নয়! চাল পাস হচ্ছে...`;
+    document.getElementById('status-text').innerText = 'কোন চাল সম্ভব নয়! চাল পাস হচ্ছে...';
     setTimeout(nextTurn, 1200);
   } else if (activePawnsToMove.length === 1) {
     highlightPawns(true);
-    setTimeout(() => { onPawnClick(activePawnsToMove[0]); }, 400);
+    setTimeout(function(){ onPawnClick(activePawnsToMove[0]); }, 400);
   } else {
     highlightPawns(true);
     document.getElementById('status-text').innerText = diceValue === 6
-      ? `ছক্কা! একটি গুটি বেছে নিন।` : `চাল দেওয়ার জন্য গুটি বেছে নিন।`;
+      ? 'ছক্কা! একটি গুটি বেছে নিন।' : 'চাল দেওয়ার জন্য গুটি বেছে নিন।';
   }
 }
 function highlightPawns(enable) {
   if (!gameSettings.highlight && enable) return;
-  activePawnsToMove.forEach(p => {
+  activePawnsToMove.forEach(function(p) {
     if (enable) p.element.classList.add('highlight');
     else p.element.classList.remove('highlight');
   });
@@ -878,14 +1676,14 @@ function getStepMs() {
 function animatePawnMove(pawn, fromStep, toStep, done) {
   let current = fromStep;
   const stepMs = getStepMs();
-  const hop = () => {
+  const hop = function() {
     pawn.step = current;
     renderPawn(pawn);
     playHopSound();
     pawn.element.classList.remove('jumping');
     void pawn.element.offsetWidth;
     pawn.element.classList.add('jumping');
-    const cleanup = () => {
+    const cleanup = function() {
       pawn.element.classList.remove('jumping');
       pawn.element.removeEventListener('animationend', cleanup);
     };
@@ -897,35 +1695,35 @@ function animatePawnMove(pawn, fromStep, toStep, done) {
   hop();
 }
 function onPawnClick(pawn) {
-  if (!activePawnsToMove.includes(pawn)) return;
+  if (activePawnsToMove.indexOf(pawn) < 0) return;
   highlightPawns(false);
   activePawnsToMove = [];
   const fromStep = pawn.step;
   const toStep = pawn.step === -1 ? 0 : pawn.step + diceValue;
   if (fromStep === -1) {
     document.getElementById('status-text').innerText =
-      `ছক্কা! ${pawn.color.toUpperCase()}-এর গুটি বোর্ডে উঠছে...`;
+      'ছক্কা! ' + pawn.color.toUpperCase() + '-এর গুটি বোর্ডে উঠছে...';
   } else {
     document.getElementById('status-text').innerText =
-      `${pawn.color.toUpperCase()}-এর গুটি ${diceValue} ঘর লাফ দিচ্ছে...`;
+      pawn.color.toUpperCase() + '-এর গুটি ' + diceValue + ' ঘর লাফ দিচ্ছে...';
   }
-  animatePawnMove(pawn, fromStep, toStep, () => finishMove(pawn));
+  animatePawnMove(pawn, fromStep, toStep, function(){ finishMove(pawn); });
 }
 function finishMove(pawn) {
   let captured = false;
   let landedOnSafe = false;
   if (pawn.step >= 0 && pawn.step < 51) {
     const currentPathIdx = (playerConfigs[pawn.color].startIndex + pawn.step) % 52;
-    if (safeIndices.includes(currentPathIdx)) {
+    if (safeIndices.indexOf(currentPathIdx) >= 0) {
       landedOnSafe = true;
       playSafeZoneSound();
     }
-    if (!safeIndices.includes(currentPathIdx)) {
-      const opponentPawns = pawns.filter(p =>
-        p.color !== pawn.color &&
-        p.step >= 0 && p.step < 51 &&
-        ((playerConfigs[p.color].startIndex + p.step) % 52) === currentPathIdx
-      );
+    if (safeIndices.indexOf(currentPathIdx) < 0) {
+      const opponentPawns = pawns.filter(function(p) {
+        return p.color !== pawn.color &&
+          p.step >= 0 && p.step < 51 &&
+          ((playerConfigs[p.color].startIndex + p.step) % 52) === currentPathIdx;
+      });
       if (opponentPawns.length === 1) {
         const victim = opponentPawns[0];
         victim.step = -1;
@@ -933,27 +1731,27 @@ function finishMove(pawn) {
         captured = true;
         playCaptureSound();
         document.getElementById('status-text').innerText =
-          `${victim.color.toUpperCase()}-এর গুটি কাটা পড়লো!`;
+          victim.color.toUpperCase() + '-এর গুটি কাটা পড়লো!';
       }
     }
   }
   if (checkWin(pawn.color)) { handleMatchWin(pawn.color); return; }
   if (landedOnSafe && !captured) {
     document.getElementById('status-text').innerText =
-      `⭐ ${pawn.color.toUpperCase()}-এর গুটি সেফ জোনে পৌঁছেছে!`;
+      '⭐ ' + pawn.color.toUpperCase() + '-এর গুটি সেফ জোনে পৌঁছেছে!';
   }
   if (diceValue === 6 || captured) {
     canRoll = true;
     document.getElementById('status-text').innerText =
-      `${pawn.color.toUpperCase()} আবার ডাইস চালবেন!`;
+      pawn.color.toUpperCase() + ' আবার ডাইস চালবেন!';
   } else if (landedOnSafe) {
-    setTimeout(() => nextTurn(), 400);
+    setTimeout(function(){ nextTurn(); }, 400);
   } else nextTurn();
 }
 function handleMatchWin(winnerColor) {
   const isPlayerWin = (winnerColor === 'blue');
   document.getElementById('status-text').innerText =
-    `🎉 ${winnerColor.toUpperCase()} বিজয়ী হয়েছে! 🎉`;
+    '🎉 ' + winnerColor.toUpperCase() + ' বিজয়ী হয়েছে! 🎉';
   canRoll = false;
   playWinSound();
   gameActive = false;
@@ -963,11 +1761,11 @@ function handleMatchWin(winnerColor) {
     if (isPlayerWin) {
       profile.coins += prize;
       LudoAuth.setBalance(profile.coins);
-      showToast(`🏆 আপনি ${formatCoins(prize)} টাকা প্রাইজ জিতেছেন! (এন্ট্রি ${formatCoins(entry)})`);
+      showToast('🏆 আপনি ' + formatCoins(prize) + ' টাকা প্রাইজ জিতেছেন! (এন্ট্রি ' + formatCoins(entry) + ')');
     } else {
-      showToast(`😢 আপনি হেরেছেন। এন্ট্রি ${formatCoins(entry)} টাকা কেটে নেওয়া হয়েছে।`);
+      showToast('😢 আপনি হেরেছেন। এন্ট্রি ' + formatCoins(entry) + ' টাকা কেটে নেওয়া হয়েছে।');
     }
-    setTimeout(() => {
+    setTimeout(function() {
       document.getElementById('bet-badge').classList.remove('show');
     }, 2500);
     currentBetInfo = null;
@@ -977,21 +1775,21 @@ function handleMatchWin(winnerColor) {
   LudoAuth.recordMatch(isPlayerWin);
 }
 function checkWin(color) {
-  return pawns.filter(p => p.color === color && p.step === 56).length === 4;
+  return pawns.filter(function(p){ return p.color === color && p.step === 56; }).length === 4;
 }
 
 function startGame(mode, isBetMatch, roomPlayers) {
   if (mode === '1v1') activePlayers = ['blue', 'green'];
   else activePlayers = ['blue', 'red', 'green', 'yellow'];
-  ALL_PLAYERS.forEach(color => {
-    const card = document.getElementById(`card-${color}`);
-    if (card) card.style.display = activePlayers.includes(color) ? '' : 'none';
+  ALL_PLAYERS.forEach(function(color) {
+    const card = document.getElementById('card-' + color);
+    if (card) card.style.display = activePlayers.indexOf(color) >= 0 ? '' : 'none';
   });
   applyProfileToGameCard();
   const t = document.getElementById('tb-title');
   if (t) {
     const modeLabel = mode === '1v1' ? '1 vs 1' : '4 PLAYER';
-    t.innerText = isBetMatch ? `${modeLabel} · 💰 বাজি` : `${modeLabel} MATCH`;
+    t.innerText = isBetMatch ? modeLabel + ' · 💰 বাজি' : modeLabel + ' MATCH';
   }
   document.getElementById('mode-screen').classList.add('hidden');
   document.getElementById('global-room-screen').classList.add('hidden');
@@ -1024,8 +1822,8 @@ function updateFriendsBadge() {
 function refreshFriendsFromServer() {
   if (!profile || !profile.uid) return;
   fetch('/api/friend/list')
-    .then(r => r.json())
-    .then(data => {
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
       if (data.success) {
         serverFriends = {
           friends: data.friends || [],
@@ -1037,7 +1835,7 @@ function refreshFriendsFromServer() {
         updateProfileMenuCounts();
       }
     })
-    .catch(() => {});
+    .catch(function(){});
 }
 
 function openFriendsScreen() {
@@ -1101,7 +1899,7 @@ function doFriendSearch() {
   if (!q) { showToast('⚠️ ইউজার আইডি লিখুন'); return; }
   if (q.length < 4) { showToast('⚠️ কমপক্ষে ৪ অক্ষরের আইডি লিখুন'); return; }
 
-  const normalized = q.startsWith('LK-') ? q : 'LK-' + q;
+  const normalized = q.indexOf('LK-') === 0 ? q : 'LK-' + q;
 
   if (normalized === profile.uid) {
     frSearchResult = { found: true, self: true, user: { uid: profile.uid, name: profile.name, avatar: profile.avatar } };
@@ -1118,8 +1916,8 @@ function doFriendSearch() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ uid: normalized })
   })
-    .then(r => r.json())
-    .then(data => {
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
       if (data.success && data.user) {
         frSearchResult = { found: true, user: data.user };
       } else {
@@ -1128,7 +1926,7 @@ function doFriendSearch() {
       renderFriendsScreen();
       vibrate(15);
     })
-    .catch(() => {
+    .catch(function() {
       frSearchResult = { found: false, query: normalized, message: 'সার্ভারের সাথে যোগাযোগ করা যায়নি' };
       renderFriendsScreen();
     });
@@ -1144,7 +1942,7 @@ function buildSearchResultCard(res) {
   }
   if (!res.found) {
     card.className = 'fr-result-card not-found';
-    card.innerHTML = `❌ ইউজার পাওয়া যায়নি<br><b style="color:#ffde00;font-family:'Courier New',monospace;letter-spacing:1.5px;font-size:15px;display:inline-block;margin:6px 0 4px;">${escapeHtml(res.query)}</b><br><span style="font-size:10.5px;opacity:0.75;">${escapeHtml(res.message || 'আইডি সঠিকভাবে লিখুন বা বানান চেক করুন')}</span>`;
+    card.innerHTML = '❌ ইউজার পাওয়া যায়নি<br><b style="color:#ffde00;font-family:Courier New,monospace;letter-spacing:1.5px;font-size:15px;display:inline-block;margin:6px 0 4px;">' + escapeHtml(res.query) + '</b><br><span style="font-size:10.5px;opacity:0.75;">' + escapeHtml(res.message || 'আইডি সঠিকভাবে লিখুন বা বানান চেক করুন') + '</span>';
     return card;
   }
   const u = res.user;
@@ -1153,7 +1951,7 @@ function buildSearchResultCard(res) {
   const av = document.createElement('div');
   av.className = 'fr-result-avatar';
   av.innerText = u.avatar || '👤';
-  av.onclick = () => openProfileAction(u.uid, u.name, u.avatar);
+  av.onclick = function(){ openProfileAction(u.uid, u.name, u.avatar); };
   card.appendChild(av);
 
   const info = document.createElement('div');
@@ -1161,9 +1959,9 @@ function buildSearchResultCard(res) {
 
   let statusHtml = '';
   const isSelf = u.uid === profile.uid;
-  const isFriend = (serverFriends.friends || []).some(x => x.uid === u.uid);
-  const isSent = (serverFriends.outgoing || []).some(x => x.uid === u.uid);
-  const isReceived = (serverFriends.incoming || []).some(x => x.uid === u.uid);
+  const isFriend = (serverFriends.friends || []).some(function(x){ return x.uid === u.uid; });
+  const isSent = (serverFriends.outgoing || []).some(function(x){ return x.uid === u.uid; });
+  const isReceived = (serverFriends.incoming || []).some(function(x){ return x.uid === u.uid; });
 
   if (isSelf) {
     statusHtml = '<div class="fr-result-status me">✨ এটা আপনার নিজের আইডি</div>';
@@ -1175,11 +1973,9 @@ function buildSearchResultCard(res) {
     statusHtml = '<div class="fr-result-status received">📬 উনি আপনাকে রিকোয়েস্ট পাঠিয়েছেন</div>';
   }
 
-  info.innerHTML = `
-    <div class="fr-result-name">${escapeHtml(u.name)}</div>
-    <div class="fr-result-uid">${escapeHtml(u.uid)}</div>
-    ${statusHtml}
-  `;
+  info.innerHTML = '<div class="fr-result-name">' + escapeHtml(u.name) + '</div>' +
+                   '<div class="fr-result-uid">' + escapeHtml(u.uid) + '</div>' +
+                   statusHtml;
   card.appendChild(info);
 
   const actions = document.createElement('div');
@@ -1200,7 +1996,7 @@ function buildSearchResultCard(res) {
     b.style.background = 'linear-gradient(180deg, #0084ff, #0062cc)';
     b.style.color = '#fff';
     b.style.borderColor = '#0084ff';
-    b.onclick = () => openChatWith(u.uid, u.name, u.avatar);
+    b.onclick = function(){ openChatWith(u.uid, u.name, u.avatar); };
     actions.appendChild(b);
   } else if (isSent) {
     const b = document.createElement('button');
@@ -1212,13 +2008,13 @@ function buildSearchResultCard(res) {
     const b = document.createElement('button');
     b.className = 'fr-add-btn';
     b.innerText = '✓ গ্রহণ';
-    b.onclick = () => acceptFriendRequest(u.uid);
+    b.onclick = function(){ acceptFriendRequest(u.uid); };
     actions.appendChild(b);
   } else {
     const b = document.createElement('button');
     b.className = 'fr-add-btn';
     b.innerText = '➕ Add Friend';
-    b.onclick = () => sendFriendRequest(u.uid);
+    b.onclick = function(){ sendFriendRequest(u.uid); };
     actions.appendChild(b);
   }
   card.appendChild(actions);
@@ -1228,16 +2024,14 @@ function buildSearchResultCard(res) {
 function renderFriendList(container) {
   const list = serverFriends.friends || [];
   if (list.length === 0) {
-    container.innerHTML = `
-      <div class="fr-empty">
-        <span class="fr-empty-ico">👥</span>
-        এখনও কোনো বন্ধু যোগ করা হয়নি।<br>
-        উপরে <b style="color:#ffde00;">UID</b> দিয়ে সার্চ করে বন্ধু যোগ করুন!
-      </div>
-    `;
+    container.innerHTML = '<div class="fr-empty">' +
+      '<span class="fr-empty-ico">👥</span>' +
+      'এখনও কোনো বন্ধু যোগ করা হয়নি।<br>' +
+      'উপরে <b style="color:#ffde00;">UID</b> দিয়ে সার্চ করে বন্ধু যোগ করুন!' +
+      '</div>';
     return;
   }
-  list.forEach(u => container.appendChild(buildUserCard(u, 'friend')));
+  list.forEach(function(u){ container.appendChild(buildUserCard(u, 'friend')); });
 }
 
 function renderRequestsList(container) {
@@ -1249,26 +2043,24 @@ function renderRequestsList(container) {
     hasAny = true;
     const title = document.createElement('div');
     title.style.cssText = 'font-size:10px;color:#8bb4f0;font-weight:900;letter-spacing:2px;margin:4px 0;text-transform:uppercase;font-family:Arial,sans-serif;';
-    title.innerText = `📬 আগত রিকোয়েস্ট (${incoming.length})`;
+    title.innerText = '📬 আগত রিকোয়েস্ট (' + incoming.length + ')';
     container.appendChild(title);
-    incoming.forEach(u => container.appendChild(buildUserCard(u, 'request')));
+    incoming.forEach(function(u){ container.appendChild(buildUserCard(u, 'request')); });
   }
   if (outgoing.length > 0) {
     hasAny = true;
     const title = document.createElement('div');
     title.style.cssText = 'font-size:10px;color:#8bb4f0;font-weight:900;letter-spacing:2px;margin:14px 0 4px;text-transform:uppercase;font-family:Arial,sans-serif;';
-    title.innerText = `⏳ পাঠানো রিকোয়েস্ট (${outgoing.length})`;
+    title.innerText = '⏳ পাঠানো রিকোয়েস্ট (' + outgoing.length + ')';
     container.appendChild(title);
-    outgoing.forEach(u => container.appendChild(buildUserCard(u, 'sent')));
+    outgoing.forEach(function(u){ container.appendChild(buildUserCard(u, 'sent')); });
   }
   if (!hasAny) {
-    container.innerHTML = `
-      <div class="fr-empty">
-        <span class="fr-empty-ico">📬</span>
-        কোনো পেন্ডিং রিকোয়েস্ট নেই।<br>
-        নতুন বন্ধু খুঁজতে উপরে সার্চ করুন!
-      </div>
-    `;
+    container.innerHTML = '<div class="fr-empty">' +
+      '<span class="fr-empty-ico">📬</span>' +
+      'কোনো পেন্ডিং রিকোয়েস্ট নেই।<br>' +
+      'নতুন বন্ধু খুঁজতে উপরে সার্চ করুন!' +
+      '</div>';
   }
 }
 
@@ -1279,15 +2071,13 @@ function buildUserCard(u, type) {
   const av = document.createElement('div');
   av.className = 'fr-user-avatar';
   av.innerText = u.avatar || '👤';
-  av.onclick = () => openProfileAction(u.uid, u.name, u.avatar);
+  av.onclick = function(){ openProfileAction(u.uid, u.name, u.avatar); };
   card.appendChild(av);
 
   const info = document.createElement('div');
   info.className = 'fr-user-info';
-  info.innerHTML = `
-    <div class="fr-user-name">${escapeHtml(u.name)}</div>
-    <div class="fr-user-uid">${escapeHtml(u.uid)}</div>
-  `;
+  info.innerHTML = '<div class="fr-user-name">' + escapeHtml(u.name) + '</div>' +
+                   '<div class="fr-user-uid">' + escapeHtml(u.uid) + '</div>';
   card.appendChild(info);
 
   const actions = document.createElement('div');
@@ -1297,18 +2087,18 @@ function buildUserCard(u, type) {
     const msgBtn = document.createElement('button');
     msgBtn.className = 'fr-action-btn message';
     msgBtn.innerHTML = '💬 Message';
-    msgBtn.onclick = () => openChatWith(u.uid, u.name, u.avatar);
+    msgBtn.onclick = function(){ openChatWith(u.uid, u.name, u.avatar); };
     actions.appendChild(msgBtn);
   } else if (type === 'request') {
     const acc = document.createElement('button');
     acc.className = 'fr-action-btn accept';
     acc.innerHTML = '✓ গ্রহণ';
-    acc.onclick = () => acceptFriendRequest(u.uid);
+    acc.onclick = function(){ acceptFriendRequest(u.uid); };
     actions.appendChild(acc);
     const rej = document.createElement('button');
     rej.className = 'fr-action-btn reject';
     rej.innerHTML = '✕ বাতিল';
-    rej.onclick = () => rejectFriendRequest(u.uid);
+    rej.onclick = function(){ rejectFriendRequest(u.uid); };
     actions.appendChild(rej);
   } else if (type === 'sent') {
     const pending = document.createElement('div');
@@ -1328,8 +2118,8 @@ function sendFriendRequest(targetUid) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ target_uid: targetUid })
   })
-    .then(r => r.json())
-    .then(data => {
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
       if (!data.success) {
         showToast(data.message || 'রিকোয়েস্ট পাঠানো যায়নি');
         return;
@@ -1343,7 +2133,7 @@ function sendFriendRequest(targetUid) {
         setTimeout(doFriendSearch, 400);
       }
     })
-    .catch(() => showToast('সার্ভার সমস্যা'));
+    .catch(function(){ showToast('সার্ভার সমস্যা'); });
 }
 
 function acceptFriendRequest(fromUid) {
@@ -1352,8 +2142,8 @@ function acceptFriendRequest(fromUid) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ from_uid: fromUid })
   })
-    .then(r => r.json())
-    .then(data => {
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
       if (data.success) {
         showToast('🎉 এখন আপনি বন্ধু!');
         vibrate([40, 25, 40]);
@@ -1363,7 +2153,7 @@ function acceptFriendRequest(fromUid) {
         showToast(data.message || 'গ্রহণ করা যায়নি');
       }
     })
-    .catch(() => showToast('সার্ভার সমস্যা'));
+    .catch(function(){ showToast('সার্ভার সমস্যা'); });
 }
 
 function rejectFriendRequest(fromUid) {
@@ -1372,12 +2162,12 @@ function rejectFriendRequest(fromUid) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ from_uid: fromUid })
   })
-    .then(r => r.json())
-    .then(() => {
+    .then(function(r){ return r.json(); })
+    .then(function() {
       showToast('❌ রিকোয়েস্ট বাতিল করা হয়েছে');
       refreshFriendsFromServer();
     })
-    .catch(() => showToast('সার্ভার সমস্যা'));
+    .catch(function(){ showToast('সার্ভার সমস্যা'); });
 }
 
 /* ============================================================
@@ -1385,7 +2175,7 @@ function rejectFriendRequest(fromUid) {
    ============================================================ */
 function updateInboxBadge() {
   let total = 0;
-  inboxConversations.forEach(c => total += (c.unread || 0));
+  inboxConversations.forEach(function(c){ total += (c.unread || 0); });
   const badge = document.getElementById('mip-badge');
   if (badge) {
     badge.style.display = total > 0 ? 'inline-block' : 'none';
@@ -1396,15 +2186,15 @@ function updateInboxBadge() {
 
 function refreshInboxFromServer() {
   fetch('/api/messages/inbox')
-    .then(r => r.json())
-    .then(data => {
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
       if (data.success) {
         inboxConversations = data.conversations || [];
         renderInboxList();
         updateInboxBadge();
       }
     })
-    .catch(() => {});
+    .catch(function(){});
 }
 
 function openInboxScreen() {
@@ -1428,33 +2218,29 @@ function renderInboxList() {
   const list = document.getElementById('inbox-list');
   list.innerHTML = '';
   if (inboxConversations.length === 0) {
-    list.innerHTML = `
-      <div class="fr-empty" style="margin-top:40px;">
-        <span class="fr-empty-ico">💬</span>
-        এখনও কোনো চ্যাট নেই।<br>
-        বন্ধু তালিকা থেকে <b style="color:#ffde00;">💬 Message</b> চাপুন!
-      </div>
-    `;
+    list.innerHTML = '<div class="fr-empty" style="margin-top:40px;">' +
+      '<span class="fr-empty-ico">💬</span>' +
+      'এখনও কোনো চ্যাট নেই।<br>' +
+      'বন্ধু তালিকা থেকে <b style="color:#ffde00;">💬 Message</b> চাপুন!' +
+      '</div>';
     return;
   }
-  inboxConversations.forEach(conv => {
+  inboxConversations.forEach(function(conv) {
     const u = conv.user;
     const unread = conv.unread || 0;
     const item = document.createElement('div');
     item.className = 'conv-item' + (unread > 0 ? ' unread' : '');
-    item.onclick = () => openChatWith(u.uid, u.name, u.avatar);
+    item.onclick = function(){ openChatWith(u.uid, u.name, u.avatar); };
     const preview = conv.last_from === profile.uid ? 'আপনি: ' + conv.last_message : conv.last_message;
-    item.innerHTML = `
-      <div class="conv-avatar">${u.avatar}</div>
-      <div class="conv-info">
-        <div class="conv-name-row">
-          <div class="conv-name">${escapeHtml(u.name)}</div>
-          <div class="conv-time">${formatMsgTime(conv.timestamp)}</div>
-        </div>
-        <div class="conv-preview">${escapeHtml(preview)}</div>
-      </div>
-      ${unread > 0 ? '<div class="conv-unread-dot"></div>' : ''}
-    `;
+    item.innerHTML = '<div class="conv-avatar">' + u.avatar + '</div>' +
+      '<div class="conv-info">' +
+        '<div class="conv-name-row">' +
+          '<div class="conv-name">' + escapeHtml(u.name) + '</div>' +
+          '<div class="conv-time">' + formatMsgTime(conv.timestamp) + '</div>' +
+        '</div>' +
+        '<div class="conv-preview">' + escapeHtml(preview) + '</div>' +
+      '</div>' +
+      (unread > 0 ? '<div class="conv-unread-dot"></div>' : '');
     list.appendChild(item);
   });
 }
@@ -1477,7 +2263,7 @@ function openChatWith(uid, name, avatar) {
   document.getElementById('chat-header-name').innerText = name || 'User';
 
   loadChatMessages();
-  setTimeout(() => {
+  setTimeout(function() {
     const inp = document.getElementById('chat-input');
     if (inp) inp.focus();
   }, 300);
@@ -1490,13 +2276,13 @@ function loadChatMessages() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ with_uid: currentChatUserId })
   })
-    .then(r => r.json())
-    .then(data => {
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
       if (!data.success) return;
       renderChatMessages(data.messages || []);
       refreshInboxFromServer();
     })
-    .catch(() => {});
+    .catch(function(){});
 }
 
 function renderChatMessages(messages) {
@@ -1505,12 +2291,12 @@ function renderChatMessages(messages) {
   if (!messages || messages.length === 0) {
     const empty = document.createElement('div');
     empty.style.cssText = 'text-align:center;padding:40px 20px;color:#8bb4f0;font-family:Arial,sans-serif;font-size:12px;font-weight:bold;line-height:1.7;';
-    empty.innerHTML = `💬<br>এখনও কোনো মেসেজ নেই।<br>প্রথম মেসেজটি পাঠান!`;
+    empty.innerHTML = '💬<br>এখনও কোনো মেসেজ নেই।<br>প্রথম মেসেজটি পাঠান!';
     body.appendChild(empty);
     return;
   }
   let lastDay = '';
-  messages.forEach(msg => {
+  messages.forEach(function(msg) {
     const d = new Date(msg.timestamp);
     const dayKey = d.toDateString();
     if (dayKey !== lastDay) {
@@ -1526,15 +2312,13 @@ function renderChatMessages(messages) {
     }
     const row = document.createElement('div');
     row.className = 'chat-msg-row ' + (msg.from === profile.uid ? 'me' : 'other');
-    row.innerHTML = `
-      <div class="chat-msg-bubble">
-        <div>${escapeHtml(msg.text)}</div>
-        <div class="chat-msg-time">${formatMsgTime(msg.timestamp)}</div>
-      </div>
-    `;
+    row.innerHTML = '<div class="chat-msg-bubble">' +
+      '<div>' + escapeHtml(msg.text) + '</div>' +
+      '<div class="chat-msg-time">' + formatMsgTime(msg.timestamp) + '</div>' +
+      '</div>';
     body.appendChild(row);
   });
-  setTimeout(() => { body.scrollTop = body.scrollHeight; }, 60);
+  setTimeout(function(){ body.scrollTop = body.scrollHeight; }, 60);
 }
 
 function sendChatMessage() {
@@ -1546,17 +2330,17 @@ function sendChatMessage() {
   fetch('/api/messages/send', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ to_uid: currentChatUserId, text })
+    body: JSON.stringify({ to_uid: currentChatUserId, text: text })
   })
-    .then(r => r.json())
-    .then(data => {
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
       if (data.success) {
         inp.value = '';
         vibrate(15);
         loadChatMessages();
       }
     })
-    .catch(() => showToast('মেসেজ পাঠানো যায়নি'));
+    .catch(function(){ showToast('মেসেজ পাঠানো যায়নি'); });
 }
 
 function closeChatScreen() {
@@ -1568,11 +2352,11 @@ function closeChatScreen() {
 
 function onChatHeaderClick() {
   if (!currentChatUserId) return;
-  const u = (serverFriends.friends || []).find(x => x.uid === currentChatUserId);
+  const u = (serverFriends.friends || []).find(function(x){ return x.uid === currentChatUserId; });
   if (u) openProfileAction(u.uid, u.name, u.avatar);
 }
 
-document.addEventListener('keydown', (e) => {
+document.addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'chat-input') {
     e.preventDefault();
     sendChatMessage();
@@ -1585,7 +2369,9 @@ window.openChatWith = openChatWith;
 /* ============================================================
    ============ PAGE LOAD =====================================
    ============================================================ */
-window.addEventListener('load', async () => {
+window.addEventListener('load', async function() {
+  console.log('[LUDO] Script loaded, initializing...');
+
   loadSettings();
   loadProfile();
   applyTheme(profile.theme);
@@ -1593,18 +2379,19 @@ window.addEventListener('load', async () => {
   updateSettingsUI();
   initBoard();
 
-  setTimeout(() => {
+  setTimeout(function() {
     const sp = document.getElementById('splash');
     if (sp) sp.classList.add('hidden');
     const ms = document.getElementById('mode-screen');
     if (ms) ms.classList.remove('hidden');
+    console.log('[LUDO] Splash hidden, mode screen shown');
   }, 2300);
 
   const user = await LudoAuth.fetchServerUser();
   if (user) {
     refreshFriendsFromServer();
     refreshInboxFromServer();
-    setInterval(() => {
+    setInterval(function() {
       if (profile.loggedIn) {
         refreshInboxFromServer();
         refreshFriendsFromServer();
