@@ -566,6 +566,47 @@ function tickTimer() {
     var ms = document.getElementById('mode-screen');
     if (ms) ms.classList.remove('hidden');
   });
+  <!-- ========== BOOTSTRAP SAFETY ========== -->
+
+  (function() {
+    console.log('[BOOT] Safety script loaded');
+
+    function forceShowDashboard() {
+      var sp = document.getElementById('splash');
+      var ms = document.getElementById('mode-screen');
+      if (sp) {
+        sp.classList.add('hidden');
+        sp.style.display = 'none';
+      }
+      if (ms) ms.classList.remove('hidden');
+      console.log('[BOOT] Dashboard shown');
+    }
+
+    // ২.৫ সেকেন্ড পর যেকোনো অবস্থাতেই splash সরাবে
+    setTimeout(forceShowDashboard, 2500);
+
+    // কোনো error হলেও সরাবে
+    window.addEventListener('error', function(e) {
+      console.error('[BOOT] ERROR:', e.message, '| Line:', e.lineno, '| File:', e.filename);
+      forceShowDashboard();
+    });
+
+    window.addEventListener('unhandledrejection', function(e) {
+      console.error('[BOOT] Promise rejected:', e.reason);
+    });
+
+    // script.js লোড হয়েছে কিনা চেক
+    window.addEventListener('load', function() {
+      setTimeout(function() {
+        if (typeof loadProfile === 'function') {
+          console.log('[BOOT] ✅ script.js loaded successfully');
+        } else {
+          console.error('[BOOT] ❌ script.js NOT loaded or has syntax error!');
+        }
+      }, 100);
+    });
+  })();
+<!-- ========== END BOOTSTRAP ========== -->
 </script>
   
 </body>
