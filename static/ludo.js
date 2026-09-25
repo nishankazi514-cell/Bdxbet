@@ -1,5 +1,5 @@
 /* ============================================================
-   LUDO KING — COMPLETE ludo.js
+   LUDO KING — COMPLETE ludo.js (FIXED)
    Server-backed Friends + Chat + Game Logic
    ============================================================ */
 
@@ -87,7 +87,11 @@ function showToast(msg) {
 }
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
-    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
   })[c]);
 }
 
@@ -1883,266 +1887,56 @@ function renderFriendsScreen() {
 }
 
 function doFriendSearch() {
-  --- script.original.js	2026-09-25 04:47:04.586608229 +0000
-+++ script.js	2026-09-25 04:46:56.052969206 +0000
-@@ -1855,6 +1855,7 @@
- function openFriendsScreen() {
-   getAudioCtx();
-   syncCurrentUserToDB();
-+  syncFriendsFromServer().then(() => renderFriendsScreen());
-   document.getElementById('mode-screen').classList.add('hidden');
-   document.getElementById('friends-screen').classList.remove('hidden');
-   friendsActiveTab = 'list';
-@@ -1869,11 +1870,53 @@
-   document.getElementById('mode-screen').classList.remove('hidden');
-   updateFriendsBadge();
- }
--function refreshFriendsScreen() {
--  syncCurrentUserToDB();
-+async function refreshFriendsScreen() {
-+  await syncFriendsFromServer();
-   renderFriendsScreen();
-   showToast('🔄 রিফ্রেশ হয়েছে');
- }
-+
-+async function syncFriendsFromServer() {
-+  if (!profile || !profile.uid) return false;
-+  try {
-+    const res = await fetch('/api/friend/list', { credentials: 'same-origin' });
-+    const data = await res.json();
-+    if (!data.success) return false;
-+
-+    syncCurrentUserToDB();
-+    const me = usersDB[profile.uid];
-+    me.friends = [];
-+    me.friendRequests = [];
-+    me.sentRequests = [];
-+
-+    (data.friends || []).forEach(u => {
-+      usersDB[u.uid] = { ...(usersDB[u.uid] || {}), ...u,
-+        friends: usersDB[u.uid]?.friends || [], friendRequests: usersDB[u.uid]?.friendRequests || [], sentRequests: usersDB[u.uid]?.sentRequests || [] };
-+      me.friends.push(u.uid);
-+    });
-+    (data.incoming || []).forEach(u => {
-+      usersDB[u.uid] = { ...(usersDB[u.uid] || {}), ...u,
-+        friends: usersDB[u.uid]?.friends || [], friendRequests: usersDB[u.uid]?.friendRequests || [], sentRequests: usersDB[u.uid]?.sentRequests || [] };
-+      me.friendRequests.push(u.uid);
-+    });
-+    (data.outgoing || []).forEach(u => {
-+      usersDB[u.uid] = { ...(usersDB[u.uid] || {}), ...u,
-+        friends: usersDB[u.uid]?.friends || [], friendRequests: usersDB[u.uid]?.friendRequests || [], sentRequests: usersDB[u.uid]?.sentRequests || [] };
-+      me.sentRequests.push(u.uid);
-+    });
-+
-+    profile.friends = me.friends.slice();
-+    profile.friendRequests = me.friendRequests.slice();
-+    profile.sentRequests = me.sentRequests.slice();
-+    saveProfile();
-+    saveUsersDB();
-+    return true;
-+  } catch (e) {
-+    console.warn('Friend sync failed:', e);
-+    return false;
-+  }
-+}
-+
- function switchFriendsTab(tab) {
-   friendsActiveTab = tab;
-   updateFriendsTabsUI();
-@@ -1907,7 +1950,7 @@
-   updateFriendsBadge();
- }
- 
--function doFriendSearch() {
-+async function doFriendSearch() {
-   const input = document.getElementById('fr-search-input');
-   if (!input) return;
-   const q = (input.value || '').trim().toUpperCase().replace(/\s+/g, '');
-@@ -1915,23 +1958,50 @@
-   if (q.length < 4) { showToast('⚠️ কমপক্ষে ৪ অক্ষরের আইডি লিখুন'); return; }
- 
-   syncCurrentUserToDB();
-+  const normalized = q.startsWith('LK-') ? q : 'LK-' + q;
- 
--  if (q === profile.uid) {
-+  if (normalized === profile.uid) {
-     frSearchResult = { found: true, self: true, user: usersDB[profile.uid] };
--  } else {
--    const found = usersDB[q];
--    if (!found) {
--      frSearchResult = { found: false, query: q };
-+    renderFriendsScreen();
-+    vibrate(15);
-+    return;
-+  }
-+
-+  frSearchResult = { loading: true, query: normalized };
-+  renderFriendsScreen();
-+
-+  try {
-+    const res = await fetch('/api/friend/search', {
-+      method: 'POST',
-+      credentials: 'same-origin',
-+      headers: { 'Content-Type': 'application/json' },
-+      body: JSON.stringify({ uid: normalized })
-+    });
-+    const data = await res.json();
-+    if (data.success && data.user) {
-+      const u = data.user;
-+      usersDB[u.uid] = { ...(usersDB[u.uid] || {}), ...u,
-+        friends: usersDB[u.uid]?.friends || [], friendRequests: usersDB[u.uid]?.friendRequests || [], sentRequests: usersDB[u.uid]?.sentRequests || [] };
-+      saveUsersDB();
-+      frSearchResult = { found: true, user: usersDB[u.uid] };
-     } else {
--      frSearchResult = { found: true, user: found };
-+      frSearchResult = { found: false, query: normalized, message: data.message || 'ইউজার পাওয়া যায়নি' };
-     }
-+  } catch (e) {
-+    frSearchResult = { found: false, query: normalized, message: 'সার্ভারের সাথে যোগাযোগ করা যায়নি' };
-   }
-+
-   renderFriendsScreen();
-   vibrate(15);
- }
- 
- function buildSearchResultCard(res) {
-   const card = document.createElement('div');
-+  if (res.loading) {
-+    card.className = 'fr-result-card';
-+    card.innerHTML = '🔎 UID খোঁজা হচ্ছে...';
-+    return card;
-+  }
-   if (!res.found) {
-     card.className = 'fr-result-card not-found';
-     card.innerHTML = `❌ ইউজার পাওয়া যায়নি<br><b style="color:#ffde00;font-family:'Courier New',monospace;letter-spacing:1px;">${escapeHtml(res.query)}</b><br><span style="font-size:10.5px;opacity:0.8;">আইডি সঠিকভাবে লিখুন বা বানান চেক করুন</span>`;
-@@ -2127,73 +2197,60 @@
-   return card;
- }
- 
--function sendFriendRequest(targetUid) {
-+async function sendFriendRequest(targetUid) {
-   syncCurrentUserToDB();
-   if (!targetUid || targetUid === profile.uid) return;
--  if (!usersDB[targetUid]) { showToast('❌ ইউজার পাওয়া যায়নি'); return; }
--
--  const me = usersDB[profile.uid];
--  const other = usersDB[targetUid];
--
--  if (me.friends.includes(targetUid)) { showToast('আপনি ইতিমধ্যে বন্ধু'); return; }
--  if (me.sentRequests.includes(targetUid)) { showToast('⏳ রিকোয়েস্ট আগেই পাঠানো হয়েছে'); return; }
--
--  if (me.friendRequests.includes(targetUid)) {
--    acceptFriendRequest(targetUid);
--    return;
--  }
--
--  me.sentRequests.push(targetUid);
--  if (!other.friendRequests.includes(profile.uid)) {
--    other.friendRequests.push(profile.uid);
--  }
--  saveUsersDB();
--  syncCurrentUserToDB();
--  vibrate([30, 15, 30]);
--  showToast(`✅ ${other.name}-কে ফ্রেন্ড রিকোয়েস্ট পাঠানো হয়েছে`);
- 
--  if (other.isMock) {
--    setTimeout(() => {
--      simulateMockAccept(profile.uid, targetUid);
--    }, 5000 + Math.random() * 4000);
--  }
-+  try {
-+    const res = await fetch('/api/friend/request', {
-+      method: 'POST', credentials: 'same-origin',
-+      headers: { 'Content-Type': 'application/json' },
-+      body: JSON.stringify({ target_uid: targetUid })
-+    });
-+    const data = await res.json();
-+    if (!data.success) { showToast('❌ ' + (data.message || 'রিকোয়েস্ট পাঠানো যায়নি')); return; }
- 
--  if (frSearchResult && frSearchResult.found && frSearchResult.user && frSearchResult.user.uid === targetUid) {
--    frSearchResult.user = usersDB[targetUid];
-+    await syncFriendsFromServer();
-+    const other = usersDB[targetUid] || { uid: targetUid, name: targetUid, avatar: '👤' };
-+    vibrate([30, 15, 30]);
-+    showToast(data.status === 'became_friends' ? `🎉 ${other.name} এখন আপনার বন্ধু!` : `✅ ${other.name}-কে ফ্রেন্ড রিকোয়েস্ট পাঠানো হয়েছে`);
-+    if (frSearchResult?.found && frSearchResult.user?.uid === targetUid) frSearchResult.user = usersDB[targetUid];
-+    renderFriendsScreen();
-+  } catch (e) {
-+    showToast('❌ সার্ভারের সাথে যোগাযোগ করা যায়নি');
-   }
--  renderFriendsScreen();
- }
- 
--function acceptFriendRequest(fromUid) {
--  syncCurrentUserToDB();
--  if (!usersDB[fromUid] || !usersDB[profile.uid]) return;
--  const me = usersDB[profile.uid];
--  const other = usersDB[fromUid];
--
--  me.friendRequests = me.friendRequests.filter(id => id !== fromUid);
--  other.sentRequests = other.sentRequests.filter(id => id !== profile.uid);
--  if (!me.friends.includes(fromUid)) me.friends.push(fromUid);
--  if (!other.friends.includes(profile.uid)) other.friends.push(profile.uid);
--
--  saveUsersDB();
--  syncCurrentUserToDB();
--  vibrate([40, 25, 40]);
--  showToast(`🎉 ${other.name} এখন আপনার বন্ধু!`);
--  renderFriendsScreen();
--}
--
--function rejectFriendRequest(fromUid) {
--  syncCurrentUserToDB();
--  if (!usersDB[fromUid] || !usersDB[profile.uid]) return;
--  const me = usersDB[profile.uid];
--  const other = usersDB[fromUid];
--  me.friendRequests = me.friendRequests.filter(id => id !== fromUid);
--  other.sentRequests = other.sentRequests.filter(id => id !== profile.uid);
--  saveUsersDB();
--  syncCurrentUserToDB();
--  vibrate(15);
--  showToast('❌ রিকোয়েস্ট বাতিল করা হয়েছে');
--  renderFriendsScreen();
-+async function acceptFriendRequest(fromUid) {
-+  try {
-+    const res = await fetch('/api/friend/accept', {
-+      method: 'POST', credentials: 'same-origin',
-+      headers: { 'Content-Type': 'application/json' },
-+      body: JSON.stringify({ from_uid: fromUid })
-+    });
-+    const data = await res.json();
-+    if (!data.success) { showToast('❌ ' + (data.message || 'রিকোয়েস্ট গ্রহণ করা যায়নি')); return; }
-+    await syncFriendsFromServer();
-+    const other = usersDB[fromUid] || { name: fromUid };
-+    vibrate([40, 25, 40]);
-+    showToast(`🎉 ${other.name} এখন আপনার বন্ধু!`);
-+    renderFriendsScreen();
-+  } catch (e) { showToast('❌ সার্ভারের সাথে যোগাযোগ করা যায়নি'); }
-+}
-+
-+async function rejectFriendRequest(fromUid) {
-+  try {
-+    const res = await fetch('/api/friend/reject', {
-+      method: 'POST', credentials: 'same-origin',
-+      headers: { 'Content-Type': 'application/json' },
-+      body: JSON.stringify({ from_uid: fromUid })
-+    });
-+    const data = await res.json();
-+    if (!data.success) { showToast('❌ ' + (data.message || 'রিকোয়েস্ট বাতিল করা যায়নি')); return; }
-+    await syncFriendsFromServer();
-+    showToast('রিকোয়েস্ট বাতিল করা হয়েছে');
-+    renderFriendsScreen();
-+  } catch (e) { showToast('❌ সার্ভারের সাথে যোগাযোগ করা যায়নি'); }
- }
- 
- function simulateMockAccept(myUid, mockUid) {
-  
+  const input = document.getElementById('fr-search-input');
+  if (!input) return;
+  const q = (input.value || '').trim().toUpperCase().replace(/\s+/g, '');
+  if (!q) { showToast('⚠️ ইউজার আইডি লিখুন'); return; }
+  if (q.length < 4) { showToast('⚠️ কমপক্ষে ৪ অক্ষরের আইডি লিখুন'); return; }
+
+  const normalized = q.startsWith('LK-') ? q : 'LK-' + q;
+
+  if (normalized === profile.uid) {
+    frSearchResult = { found: true, self: true, user: { uid: profile.uid, name: profile.name, avatar: profile.avatar } };
+    renderFriendsScreen();
+    vibrate(15);
+    return;
+  }
+
+  frSearchResult = { loading: true, query: normalized };
+  renderFriendsScreen();
+
+  fetch('/api/friend/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uid: normalized })
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success && data.user) {
+        frSearchResult = { found: true, user: data.user };
+      } else {
+        frSearchResult = { found: false, query: normalized, message: data.message || 'ইউজার পাওয়া যায়নি' };
+      }
+      renderFriendsScreen();
+      vibrate(15);
+    })
+    .catch(() => {
+      frSearchResult = { found: false, query: normalized, message: 'সার্ভারের সাথে যোগাযোগ করা যায়নি' };
+      renderFriendsScreen();
+    });
+}
 
 function buildSearchResultCard(res) {
   const card = document.createElement('div');
+
+  if (res.loading) {
+    card.className = 'fr-result-card';
+    card.innerHTML = '🔎 UID খোঁজা হচ্ছে...';
+    return card;
+  }
   if (!res.found) {
     card.className = 'fr-result-card not-found';
-    card.innerHTML = `❌ ইউজার পাওয়া যায়নি<br><b style="color:#ffde00;font-family:'Courier New',monospace;letter-spacing:1.5px;font-size:15px;display:inline-block;margin:6px 0 4px;">${escapeHtml(res.query)}</b><br><span style="font-size:10.5px;opacity:0.75;">আইডি সঠিকভাবে লিখুন বা বানান চেক করুন</span>`;
+    card.innerHTML = `❌ ইউজার পাওয়া যায়নি<br><b style="color:#ffde00;font-family:'Courier New',monospace;letter-spacing:1.5px;font-size:15px;display:inline-block;margin:6px 0 4px;">${escapeHtml(res.query)}</b><br><span style="font-size:10.5px;opacity:0.75;">${escapeHtml(res.message || 'আইডি সঠিকভাবে লিখুন বা বানান চেক করুন')}</span>`;
     return card;
   }
   const u = res.user;
@@ -2150,7 +1944,7 @@ function buildSearchResultCard(res) {
 
   const av = document.createElement('div');
   av.className = 'fr-result-avatar';
-  av.innerText = u.avatar;
+  av.innerText = u.avatar || '👤';
   av.onclick = () => openProfileAction(u.uid, u.name, u.avatar);
   card.appendChild(av);
 
@@ -2276,7 +2070,7 @@ function buildUserCard(u, type) {
 
   const av = document.createElement('div');
   av.className = 'fr-user-avatar';
-  av.innerText = u.avatar;
+  av.innerText = u.avatar || '👤';
   av.onclick = () => openProfileAction(u.uid, u.name, u.avatar);
   card.appendChild(av);
 
@@ -2326,22 +2120,22 @@ function sendFriendRequest(targetUid) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ target_uid: targetUid })
   })
-  .then(r => r.json())
-  .then(data => {
-    if (!data.success) {
-      showToast(data.message || 'রিকোয়েস্ট পাঠানো যায়নি');
-      return;
-    }
-    if (data.status === 'became_friends') showToast('🎉 দুইজন এখন বন্ধু!');
-    else if (data.status === 'already_friends') showToast('ইতিমধ্যে বন্ধু');
-    else showToast('✅ রিকোয়েস্ট পাঠানো হয়েছে');
-    vibrate([30, 15, 30]);
-    refreshFriendsFromServer();
-    if (frSearchResult && frSearchResult.found) {
-      setTimeout(doFriendSearch, 400);
-    }
-  })
-  .catch(() => showToast('সার্ভার সমস্যা'));
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success) {
+        showToast(data.message || 'রিকোয়েস্ট পাঠানো যায়নি');
+        return;
+      }
+      if (data.status === 'became_friends') showToast('🎉 দুইজন এখন বন্ধু!');
+      else if (data.status === 'already_friends') showToast('ইতিমধ্যে বন্ধু');
+      else showToast('✅ রিকোয়েস্ট পাঠানো হয়েছে');
+      vibrate([30, 15, 30]);
+      refreshFriendsFromServer();
+      if (frSearchResult && frSearchResult.found) {
+        setTimeout(doFriendSearch, 400);
+      }
+    })
+    .catch(() => showToast('সার্ভার সমস্যা'));
 }
 
 function acceptFriendRequest(fromUid) {
@@ -2350,18 +2144,18 @@ function acceptFriendRequest(fromUid) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ from_uid: fromUid })
   })
-  .then(r => r.json())
-  .then(data => {
-    if (data.success) {
-      showToast('🎉 এখন আপনি বন্ধু!');
-      vibrate([40, 25, 40]);
-      refreshFriendsFromServer();
-      if (frSearchResult && frSearchResult.found) setTimeout(doFriendSearch, 400);
-    } else {
-      showToast(data.message || 'গ্রহণ করা যায়নি');
-    }
-  })
-  .catch(() => showToast('সার্ভার সমস্যা'));
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        showToast('🎉 এখন আপনি বন্ধু!');
+        vibrate([40, 25, 40]);
+        refreshFriendsFromServer();
+        if (frSearchResult && frSearchResult.found) setTimeout(doFriendSearch, 400);
+      } else {
+        showToast(data.message || 'গ্রহণ করা যায়নি');
+      }
+    })
+    .catch(() => showToast('সার্ভার সমস্যা'));
 }
 
 function rejectFriendRequest(fromUid) {
@@ -2370,12 +2164,12 @@ function rejectFriendRequest(fromUid) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ from_uid: fromUid })
   })
-  .then(r => r.json())
-  .then(() => {
-    showToast('❌ রিকোয়েস্ট বাতিল করা হয়েছে');
-    refreshFriendsFromServer();
-  })
-  .catch(() => showToast('সার্ভার সমস্যা'));
+    .then(r => r.json())
+    .then(() => {
+      showToast('❌ রিকোয়েস্ট বাতিল করা হয়েছে');
+      refreshFriendsFromServer();
+    })
+    .catch(() => showToast('সার্ভার সমস্যা'));
 }
 
 /* ============================================================
@@ -2431,7 +2225,8 @@ function renderInboxList() {
         <span class="fr-empty-ico">💬</span>
         এখনও কোনো চ্যাট নেই।<br>
         বন্ধু তালিকা থেকে <b style="color:#ffde00;">💬 Message</b> চাপুন!
-      </div>`;
+      </div>
+    `;
     return;
   }
   inboxConversations.forEach(conv => {
@@ -2487,13 +2282,13 @@ function loadChatMessages() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ with_uid: currentChatUserId })
   })
-  .then(r => r.json())
-  .then(data => {
-    if (!data.success) return;
-    renderChatMessages(data.messages || []);
-    refreshInboxFromServer();
-  })
-  .catch(() => {});
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success) return;
+      renderChatMessages(data.messages || []);
+      refreshInboxFromServer();
+    })
+    .catch(() => {});
 }
 
 function renderChatMessages(messages) {
@@ -2527,7 +2322,8 @@ function renderChatMessages(messages) {
       <div class="chat-msg-bubble">
         <div>${escapeHtml(msg.text)}</div>
         <div class="chat-msg-time">${formatMsgTime(msg.timestamp)}</div>
-      </div>`;
+      </div>
+    `;
     body.appendChild(row);
   });
   setTimeout(() => { body.scrollTop = body.scrollHeight; }, 60);
@@ -2544,15 +2340,15 @@ function sendChatMessage() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ to_uid: currentChatUserId, text })
   })
-  .then(r => r.json())
-  .then(data => {
-    if (data.success) {
-      inp.value = '';
-      vibrate(15);
-      loadChatMessages();
-    }
-  })
-  .catch(() => showToast('মেসেজ পাঠানো যায়নি'));
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        inp.value = '';
+        vibrate(15);
+        loadChatMessages();
+      }
+    })
+    .catch(() => showToast('মেসেজ পাঠানো যায়নি'));
 }
 
 function closeChatScreen() {
