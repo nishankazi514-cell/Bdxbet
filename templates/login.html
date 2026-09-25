@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>লগইন · Ludo BDxbet</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='ludo.css') }}">
   <style>
     :root {
       --c1: #142c52;
@@ -32,7 +31,6 @@
       overflow: hidden;
     }
 
-    /* Splash overlay */
     .splash {
       position: fixed;
       inset: 0;
@@ -79,7 +77,6 @@
       text-shadow: 0 3px 0 #a87400, 0 6px 12px rgba(0,0,0,0.9), 0 0 25px rgba(255,222,0,0.7);
     }
 
-    /* Login card */
     .box {
       width: 100%;
       max-width: 380px;
@@ -91,6 +88,7 @@
                   0 0 30px rgba(255,204,0,0.25),
                   inset 0 1px 0 rgba(255,255,255,0.08);
       animation: cardIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      opacity: 0;
     }
     @keyframes cardIn {
       0% { transform: scale(0.9); opacity: 0; }
@@ -154,9 +152,7 @@
       margin: 0 0 6px;
       text-transform: uppercase;
     }
-    .input-wrap {
-      position: relative;
-    }
+    .input-wrap { position: relative; }
     input {
       width: 100%;
       padding: 13px 42px 13px 14px;
@@ -305,21 +301,25 @@
 <script>
   let mode = 'login';
 
-  // Splash hide after 1.6s
-  setTimeout(() => {
-    const sp = document.getElementById('splash');
-    if (sp) sp.classList.add('hidden');
-  }, 1600);
+  // Splash hide + show login box
+  window.addEventListener('load', function() {
+    setTimeout(function() {
+      var sp = document.getElementById('splash');
+      if (sp) sp.classList.add('hidden');
+      var box = document.getElementById('box');
+      if (box) box.style.opacity = '1';
+    }, 1600);
+  });
 
   // Auto-check session (already logged in → straight to /ludo)
   fetch('/api/user')
-    .then(r => r.json())
-    .then(data => {
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
       if (data.loggedIn) {
         window.location.href = '/ludo';
       }
     })
-    .catch(() => {});
+    .catch(function() {});
 
   function switchTab(m) {
     mode = m;
@@ -327,14 +327,14 @@
     document.getElementById('tab-register').classList.toggle('active', m === 'register');
     document.getElementById('name-wrap').classList.toggle('hidden', m === 'login');
     document.getElementById('submit-btn').innerText = m === 'login' ? 'লগইন করুন' : 'রেজিস্টার করুন';
-    const msg = document.getElementById('msg');
+    var msg = document.getElementById('msg');
     msg.className = 'msg';
     msg.innerText = '';
   }
 
   function togglePassword() {
-    const inp = document.getElementById('password');
-    const btn = document.getElementById('eye-btn');
+    var inp = document.getElementById('password');
+    var btn = document.getElementById('eye-btn');
     if (inp.type === 'password') {
       inp.type = 'text';
       btn.innerText = '🙈';
@@ -345,15 +345,16 @@
   }
 
   function showMsg(text, type) {
-    const el = document.getElementById('msg');
+    var el = document.getElementById('msg');
     el.innerText = text;
     el.className = 'msg ' + type;
   }
 
   async function submitForm() {
-    const phone = document.getElementById('phone').value.trim();
-    const password = document.getElementById('password').value;
-    const name = document.getElementById('name').value.trim();
+    var phone = document.getElementById('phone').value.trim();
+    var password = document.getElementById('password').value;
+    var nameInput = document.getElementById('name');
+    var name = nameInput ? nameInput.value.trim() : '';
 
     if (!phone) {
       showMsg('⚠️ মোবাইল নম্বর দিন', 'err');
@@ -372,27 +373,29 @@
       return;
     }
 
-    const btn = document.getElementById('submit-btn');
+    var btn = document.getElementById('submit-btn');
     btn.disabled = true;
-    const originalText = btn.innerText;
+    var originalText = btn.innerText;
     btn.innerText = '⏳ অপেক্ষা করুন...';
 
-    const url = mode === 'login' ? '/api/login' : '/api/register';
-    const body = { phone, password };
+    var url = mode === 'login' ? '/api/login' : '/api/register';
+    var body = { phone: phone, password: password };
     if (mode === 'register' && name) body.name = name;
 
     try {
-      const res = await fetch(url, {
+      var res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
-      const data = await res.json();
+      var data = await res.json();
 
       if (data.success) {
-          showMsg('✅ ' + (data.message || 'সফল!'), 'success');
-          setTimeout(() => { window.location.href = '/';);
-        } else {
+        showMsg('✅ ' + (data.message || 'সফল!'), 'ok');
+        setTimeout(function() {
+          window.location.href = '/ludo';
+        }, 600);
+      } else {
         showMsg('❌ ' + (data.message || 'সমস্যা হয়েছে'), 'err');
         btn.disabled = false;
         btn.innerText = originalText;
@@ -405,16 +408,10 @@
   }
 
   // Enter key submits
-  document.addEventListener('keydown', (e) => {
+  document.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') submitForm();
   });
-
-  // Show box after splash
-  setTimeout(() => {
-    const box = document.getElementById('box');
-    if (box) box.style.opacity = '1';
-  }, 100);
 </script>
 
 </body>
-</html>
+  </html>
