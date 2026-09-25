@@ -391,7 +391,7 @@
 
       if (data.success) {
           showMsg('✅ ' + (data.message || 'সফল!'), 'success');
-          setTimeout(() => { window.location.href = '/'; }, 700);
+          setTimeout(() => { window.location.href = '/';);
         } else {
         showMsg('❌ ' + (data.message || 'সমস্যা হয়েছে'), 'err');
         btn.disabled = false;
