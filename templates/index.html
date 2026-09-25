@@ -1,1 +1,228 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>লগইন · Ludo BDxbet</title>
+  <style>
+    :root { --c1:#142c52; --c2:#050a14; --accent:#ffcc00; --accent-dark:#d99a00; }
+    * { box-sizing:border-box; margin:0; padding:0; font-family:'Arial Black',Arial,sans-serif; -webkit-tap-highlight-color:transparent; }
+    body {
+      background: radial-gradient(circle at center, var(--c1) 0%, var(--c2) 100%);
+      min-height:100vh; display:flex; align-items:center; justify-content:center;
+      padding:20px; color:#fff; overflow:hidden;
+    }
+    .splash {
+      position:fixed; inset:0; z-index:100;
+      background: radial-gradient(circle at center, var(--c1), var(--c2));
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      gap:22px; transition: opacity .6s ease, visibility .6s ease;
+    }
+    .splash.hidden { opacity:0; visibility:hidden; pointer-events:none; }
+    .splash-dice {
+      width:100px; height:100px;
+      background: linear-gradient(145deg,#fff,#e0e0e0);
+      border-radius:20px; padding:14px; gap:6px;
+      display:grid; grid-template-columns:1fr 1fr 1fr; grid-template-rows:1fr 1fr 1fr;
+      box-shadow: 0 12px 30px rgba(0,0,0,.7), inset 0 -6px 12px rgba(0,0,0,.15),
+                  inset 0 6px 12px rgba(255,255,255,.9), 0 0 40px rgba(255,204,0,.5);
+      animation: diceSpin 2s ease-in-out infinite;
+    }
+    @keyframes diceSpin { 0%,100%{transform:rotate(0);} 50%{transform:rotate(8deg);} }
+    .splash-dot { background:#c41a1a; border-radius:50%; }
+    .splash-dot.empty { background:transparent; }
+    .splash-title {
+      font-size:30px; font-weight:900; font-style:italic; letter-spacing:3px; color:#ffde00;
+      text-shadow: 0 3px 0 #a87400, 0 6px 12px rgba(0,0,0,.9), 0 0 25px rgba(255,222,0,.7);
+    }
+    .box {
+      width:100%; max-width:380px;
+      background: linear-gradient(180deg,#16305c 0%,#07101f 100%);
+      border:2px solid #c9a227; border-radius:20px;
+      padding:26px 20px 22px;
+      box-shadow: 0 20px 50px rgba(0,0,0,.85), 0 0 30px rgba(255,204,0,.25),
+                  inset 0 1px 0 rgba(255,255,255,.08);
+      animation: cardIn .5s cubic-bezier(.34,1.56,.64,1) both;
+    }
+    @keyframes cardIn { 0%{transform:scale(.9);opacity:0;} 100%{transform:scale(1);opacity:1;} }
+    .logo {
+      text-align:center; font-size:26px; font-weight:900; font-style:italic;
+      color:#ffde00; letter-spacing:2px;
+      text-shadow: 0 3px 0 #a87400, 0 6px 14px rgba(0,0,0,.9), 0 0 24px rgba(255,222,0,.6);
+      margin-bottom:4px;
+    }
+    .sub { text-align:center; font-size:10px; letter-spacing:4px; color:#8bb4f0; margin-bottom:22px; font-weight:900; }
+    .tabs { display:flex; background:rgba(0,0,0,.4); border-radius:12px; padding:4px; margin-bottom:18px; border:1.5px solid rgba(255,255,255,.1); }
+    .tab {
+      flex:1; padding:11px; background:transparent; border:none; color:#8bb4f0;
+      font-weight:900; font-size:13px; border-radius:9px; cursor:pointer;
+      letter-spacing:.5px; transition: all .2s; font-family:inherit;
+    }
+    .tab.active {
+      background: linear-gradient(180deg, var(--accent), var(--accent-dark));
+      color:#1a1a1a; box-shadow: 0 2px 8px rgba(0,0,0,.5), 0 0 12px rgba(255,222,0,.5);
+    }
+    .field { margin-bottom:12px; }
+    label { display:block; font-size:10px; color:#8bb4f0; font-weight:900; letter-spacing:1.2px; margin:0 0 6px; text-transform:uppercase; }
+    .input-wrap { position:relative; }
+    input {
+      width:100%; padding:13px 42px 13px 14px;
+      border-radius:11px; border:2px solid #2c5599; background:rgba(0,0,0,.5);
+      color:#fff; font-size:15px; font-weight:bold; outline:none;
+      font-family:Arial,sans-serif; letter-spacing:.5px;
+      user-select:text; -webkit-user-select:text; transition: border-color .2s;
+    }
+    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255,204,0,.15); }
+    input::placeholder { color:#4f6f9e; font-weight:normal; }
+    .eye-btn {
+      position:absolute; right:8px; top:50%; transform:translateY(-50%);
+      width:32px; height:32px; border-radius:8px;
+      background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15);
+      color:#cfe0ff; cursor:pointer; font-size:14px;
+      display:flex; align-items:center; justify-content:center;
+    }
+    .btn {
+      width:100%; margin-top:8px; padding:14px; border-radius:12px; border:none;
+      background: linear-gradient(180deg, var(--accent), var(--accent-dark));
+      color:#1a1a1a; font-size:15px; font-weight:900; letter-spacing:1px; cursor:pointer;
+      box-shadow: 0 6px 16px rgba(0,0,0,.6), 0 0 18px rgba(255,222,0,.4);
+      font-family:inherit; transition: transform .15s, filter .15s;
+    }
+    .btn:active { transform: scale(.96); filter: brightness(1.1); }
+    .btn:disabled { opacity:.5; cursor:not-allowed; filter: grayscale(.5); }
+    .msg { margin-top:14px; padding:10px 12px; border-radius:10px; font-size:12px; font-weight:bold; text-align:center; display:none; font-family:Arial,sans-serif; line-height:1.4; }
+    .msg.err { display:block; background:rgba(196,26,26,.2); border:1px solid rgba(196,26,26,.5); color:#ff9b9b; }
+    .msg.ok { display:block; background:rgba(44,143,77,.2); border:1px solid rgba(44,143,77,.5); color:#7cffb0; }
+    .hidden { display:none !important; }
+    .footer-note { text-align:center; margin-top:16px; font-size:9px; color:#4f6f9e; letter-spacing:1px; font-family:Arial,sans-serif; line-height:1.6; }
+  </style>
+</head>
+<body>
 
+<div class="splash" id="splash">
+  <div class="splash-dice">
+    <div class="splash-dot"></div><div class="splash-dot empty"></div><div class="splash-dot"></div>
+    <div class="splash-dot empty"></div><div class="splash-dot"></div><div class="splash-dot empty"></div>
+    <div class="splash-dot"></div><div class="splash-dot empty"></div><div class="splash-dot"></div>
+  </div>
+  <div class="splash-title">LUDO BDXBET</div>
+</div>
+
+<div class="box" id="box">
+  <div class="logo">LUDO BDXBET</div>
+  <div class="sub">ONLINE EDITION</div>
+
+  <div class="tabs">
+    <button class="tab active" id="tab-login" onclick="switchTab('login')">লগইন</button>
+    <button class="tab" id="tab-register" onclick="switchTab('register')">রেজিস্টার</button>
+  </div>
+
+  <div class="field">
+    <label>মোবাইল নম্বর</label>
+    <input type="tel" id="phone" placeholder="01XXXXXXXXX" maxlength="15" autocomplete="off" inputmode="numeric">
+  </div>
+
+  <div class="field">
+    <label>পাসওয়ার্ড</label>
+    <div class="input-wrap">
+      <input type="password" id="password" placeholder="কমপক্ষে ৪ অক্ষর" maxlength="40" autocomplete="off">
+      <button class="eye-btn" id="eye-btn" type="button" onclick="togglePassword()">👁</button>
+    </div>
+  </div>
+
+  <div class="field hidden" id="name-wrap">
+    <label>আপনার নাম (ঐচ্ছিক)</label>
+    <input type="text" id="name" placeholder="যেমন: Rahim" maxlength="20" autocomplete="off">
+  </div>
+
+  <button class="btn" id="submit-btn" onclick="submitForm()">লগইন করুন</button>
+
+  <div class="msg" id="msg"></div>
+
+  <div class="footer-note">
+    🔒 আপনার তথ্য সুরক্ষিত<br>
+    Ludo BDxbet · v1.0
+  </div>
+</div>
+
+<script>
+  let mode = 'login';
+
+  setTimeout(() => {
+    const sp = document.getElementById('splash');
+    if (sp) sp.classList.add('hidden');
+  }, 1600);
+
+  function switchTab(m) {
+    mode = m;
+    document.getElementById('tab-login').classList.toggle('active', m === 'login');
+    document.getElementById('tab-register').classList.toggle('active', m === 'register');
+    document.getElementById('name-wrap').classList.toggle('hidden', m === 'login');
+    document.getElementById('submit-btn').innerText = m === 'login' ? 'লগইন করুন' : 'রেজিস্টার করুন';
+    const msg = document.getElementById('msg');
+    msg.className = 'msg';
+    msg.innerText = '';
+  }
+
+  function togglePassword() {
+    const inp = document.getElementById('password');
+    const btn = document.getElementById('eye-btn');
+    if (inp.type === 'password') { inp.type = 'text'; btn.innerText = '🙈'; }
+    else { inp.type = 'password'; btn.innerText = '👁'; }
+  }
+
+  function showMsg(text, type) {
+    const el = document.getElementById('msg');
+    el.innerText = text;
+    el.className = 'msg ' + type;
+  }
+
+  async function submitForm() {
+    const phone = document.getElementById('phone').value.trim();
+    const password = document.getElementById('password').value;
+    const name = document.getElementById('name').value.trim();
+
+    if (!phone) { showMsg('⚠️ মোবাইল নম্বর দিন', 'err'); return; }
+    if (phone.length < 6) { showMsg('⚠️ সঠিক মোবাইল নম্বর দিন', 'err'); return; }
+    if (!password) { showMsg('⚠️ পাসওয়ার্ড দিন', 'err'); return; }
+    if (password.length < 4) { showMsg('⚠️ পাসওয়ার্ড কমপক্ষে ৪ অক্ষর', 'err'); return; }
+
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+    const originalText = btn.innerText;
+    btn.innerText = '⏳ অপেক্ষা করুন...';
+
+    const url = mode === 'login' ? '/api/login' : '/api/register';
+    const body = { phone, password };
+    if (mode === 'register' && name) body.name = name;
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        showMsg('✅ ' + (data.message || 'সফল!'), 'ok');
+        setTimeout(() => { window.location.href = '/'; }, 700);
+      } else {
+        showMsg('❌ ' + (data.message || 'সমস্যা'), 'err');
+        btn.disabled = false;
+        btn.innerText = originalText;
+      }
+    } catch (e) {
+      showMsg('❌ সার্ভারে সংযোগ হয়নি', 'err');
+      btn.disabled = false;
+      btn.innerText = originalText;
+    }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submitForm();
+  });
+</script>
+
+</body>
+  </html>
